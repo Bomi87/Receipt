@@ -91,6 +91,12 @@
         font-size: 22px;
         margin-top: 9px;
       }
+      .total-title-approx {
+        color: #000;
+        font-size: 0.875em;
+        font-style: italic;
+        font-weight: 400;
+      }
       .filters {
         display: grid;
         grid-template-columns: repeat(7, minmax(110px, 1fr));
@@ -152,6 +158,19 @@
         align-items: center;
         margin: 11px 0;
         font-size: 13px;
+      }
+      .bar-amount {
+        color: #000;
+        text-align: right;
+        white-space: nowrap;
+      }
+      .bar-amount .approximate-krw {
+        display: block;
+        margin-top: 2px;
+        color: #000;
+        font-size: 12px;
+        font-style: italic;
+        font-weight: 400;
       }
       .bar-track {
         height: 16px;
@@ -448,7 +467,7 @@
           <button type="button" onclick="resetDashboardFilters()">필터 초기화</button>
         </div>
         <div class="cards">
-          <article class="panel">총 결제금액<b id="total">0원</b></article>
+          <article class="panel"><span id="totalTitle">총 결제금액</span><b id="total">0원</b></article>
           <article class="panel">등록 영수증<b id="count">0건</b></article>
         </div>
         <div class="panel">
@@ -785,6 +804,18 @@
           .join(" + ");
       }
 
+      function approximateKrwLabel(rows) {
+        const currencyCount = new Set(rows.map(currencyOf)).size;
+        const convertedAmounts = rows.map(currentKrwAmount);
+        if (
+          currencyCount <= 1 ||
+          !convertedAmounts.length ||
+          convertedAmounts.some((value) => value === null)
+        ) return "";
+        const total = convertedAmounts.reduce((sum, value) => sum + value, 0);
+        return "(약 " + Math.round(total).toLocaleString("ko-KR") + "원)";
+      }
+
       async function loadExchangeRates() {
         const currencies = [...new Set((app.receipts || []).map(currencyOf))]
           .filter((code) => code !== "KRW");
@@ -853,11 +884,14 @@
         $("breakdownChart").innerHTML = entries.map(([value, amount]) => {
           const matchingRows = rows.filter((r) => String(r[breakdownKey] || "미분류") === String(value));
           const count = matchingRows.length;
+          const approximate = approximateKrwLabel(matchingRows);
           return '<div class="bar-row clickable" data-value="' + escapeHtml(value) + '"><span>' +
             escapeHtml(breakdownLabel(breakdownKey, value)) + ' <small>(' + count + '건)</small></span>' +
             '<div class="bar-track"><div class="bar-fill" style="width:' +
-            Math.max(2, Math.round(Number(amount) / max * 100)) + '%"></div></div><b>' +
-            escapeHtml(originalAmountLabel(matchingRows)) + "</b></div>";
+            Math.max(2, Math.round(Number(amount) / max * 100)) + '%"></div></div><b class="bar-amount">' +
+            escapeHtml(originalAmountLabel(matchingRows)) +
+            (approximate ? '<em class="approximate-krw">' + escapeHtml(approximate) + "</em>" : "") +
+            "</b></div>";
         }).join("");
         $("breakdownChart").querySelectorAll(".clickable").forEach((row) => {
           row.addEventListener("click", () => showBreakdownDetail(row.dataset.value));
@@ -999,6 +1033,17 @@
         $("total").innerHTML = Object.entries(totals).length
           ? Object.entries(totals).map(([code, value]) => money(value, code)).join("<br>")
           : "0 KRW";
+        const currencyCount = Object.keys(totals).length;
+        const convertedAmounts = rows.map(currentKrwAmount);
+        const canShowApproximateTotal =
+          currencyCount > 1 &&
+          convertedAmounts.length > 0 &&
+          convertedAmounts.every((value) => value !== null);
+        $("totalTitle").innerHTML = canShowApproximateTotal
+          ? '총 결제금액 <em class="total-title-approx">(약 ' +
+            Math.round(convertedAmounts.reduce((sum, value) => sum + value, 0)).toLocaleString("ko-KR") +
+            "원)</em>"
+          : "총 결제금액";
         $("count").textContent = rows.length + "건";
         renderBreakdown(rows);
         renderDashboardReceiptTable(rows, "결과 Data");
