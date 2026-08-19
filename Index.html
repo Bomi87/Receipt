@@ -1,1 +1,308 @@
-<!doctype html><html lang="ko"><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>영수증 비용관리</title><style>body{font-family:Arial;margin:0;background:#f4f7fa;color:#18293b}header{background:#14263c;color:#fff;padding:18px}main{max-width:1050px;margin:auto;padding:18px}.tabs{display:flex;gap:8px;margin-bottom:15px}.tabs button,.primary{border:0;border-radius:8px;padding:10px 14px}.primary,.tabs .on{background:#2676ed;color:#fff}.panel{background:#fff;border:1px solid #e1e7ed;border-radius:12px;padding:18px;margin-bottom:14px}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.cards b{display:block;font-size:22px;margin-top:9px}.scan{display:grid;grid-template-columns:1fr 1fr;gap:14px}.drop{min-height:420px;border:2px dashed #becbd7;display:grid;place-content:center;text-align:center}.drop img{max-width:100%;max-height:390px}.form{display:grid;grid-template-columns:1fr 1fr;gap:11px}.form label{font-size:12px}.form input,.form select{width:100%;height:39px;margin-top:5px;border:1px solid #d7e0e8;border-radius:7px;padding:7px}.wide{grid-column:1/-1}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:10px;border-bottom:1px solid #edf0f3;text-align:left}@media(max-width:700px){.cards{grid-template-columns:1fr 1fr}.scan{grid-template-columns:1fr}.drop{min-height:300px}}</style></head><body><header><b>Receipt Flow</b>　영수증 비용관리</header><main><div class="tabs"><button onclick="show('dash',this)" class="on">대시보드</button><button onclick="show('scan',this)">영수증 스캔</button><button onclick="show('list',this)">영수증 내역</button></div><section id="dash"><div class="cards"><article class="panel">총 결제금액<b id="total">0원</b></article><article class="panel">등록 영수증<b id="count">0건</b></article><article class="panel">평균 결제액<b id="avg">0원</b></article><article class="panel">확인 필요<b id="pending">0건</b></article></div><div class="panel"><h3>사용자별 지출</h3><div id="users"></div></div></section><section id="scan" hidden><div class="scan"><div class="panel drop" onclick="file.click()"><div id="photo"><h2>⌁</h2><b>영수증 촬영</b><p>눌러서 카메라를 실행하세요.</p></div><input id="file" hidden type="file" accept="image/*" capture="environment"></div><form class="panel form" onsubmit="save(event)"><label>구매일자<input id="purchaseDate" type="date" required></label><label>구매시간<input id="purchaseTime" type="time"></label><label>구매자<select id="buyerName" onchange="syncEmp()"></select></label><label>사번<input id="employeeId" readonly></label><label class="wide">구매처<input id="merchant" required></label><label>비용 분류<select id="category"></select></label><label>세부 분류<input id="subcategory"></label><label class="wide">승인번호<input id="approvalNumber"></label><label class="wide">결제금액<input id="amount" type="number" required></label><button class="primary wide">확인 후 저장</button></form></div></section><section id="list" hidden><div class="panel" style="overflow:auto"><table><thead><tr><th>구매일시</th><th>사용자</th><th>구매처</th><th>분류</th><th>승인번호</th><th>금액</th></tr></thead><tbody id="rows"></tbody></table></div></section></main><script>let app={},image='';const $=id=>document.getElementById(id),won=n=>Number(n||0).toLocaleString()+'원';function show(id,b){['dash','scan','list'].forEach(x=>$(x).hidden=x!==id);document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on')}function init(){google.script.run.withSuccessHandler(d=>{app=d;$('buyerName').innerHTML=d.employees.map(e=>'<option value="'+e.name+'">'+e.name+' / '+e.employeeId+' / '+e.department+'</option>').join('');$('category').innerHTML=d.categories.map(x=>'<option>'+x+'</option>').join('');syncEmp();render(d)}).getInitialData()}function syncEmp(){let e=app.employees?.find(x=>x.name==$('buyerName').value);if(e)$('employeeId').value=e.employeeId}function render(d){$('total').textContent=won(d.summary.total);$('count').textContent=d.summary.count+'건';$('avg').textContent=won(d.summary.average);$('pending').textContent=d.receipts.filter(r=>r['확인상태']=='확인필요').length+'건';$('users').innerHTML=Object.entries(d.summary.byUser).map(([k,v])=>'<p>'+k+'　<b>'+won(v)+'</b></p>').join('');$('rows').innerHTML=d.receipts.map(r=>'<tr><td>'+r['구매일자']+' '+r['구매시간']+'</td><td>'+r['이름']+'<br>'+r['사번']+'</td><td>'+r['구매처']+'</td><td>'+r['비용대분류']+'</td><td>'+r['승인번호']+'</td><td>'+won(r['결제금액'])+'</td></tr>').join('')}file.onchange=e=>{let f=e.target.files[0],r=new FileReader;r.onload=()=>{image=r.result;photo.innerHTML='<img src="'+image+'"><p>AI 분석 중…</p>';google.script.run.withSuccessHandler(x=>{Object.entries(x).forEach(([k,v])=>{if($(k)&&v!==undefined)$(k).value=v});syncEmp();photo.querySelector('p').textContent='분석 완료'}).withFailureHandler(x=>alert(x.message)).analyzeReceipt(image)};r.readAsDataURL(f)};function save(e){e.preventDefault();let x={};['purchaseDate','purchaseTime','buyerName','employeeId','merchant','category','subcategory','approvalNumber','amount'].forEach(k=>x[k]=$(k).value);google.script.run.withSuccessHandler(()=>{alert('저장했습니다.');location.reload()}).withFailureHandler(x=>alert(x.message)).saveReceipt(x,image)}init();</script></body></html>
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>영수증 비용관리</title>
+    <style>
+      body {
+        font-family: Arial;
+        margin: 0;
+        background: #f4f7fa;
+        color: #18293b;
+      }
+      header {
+        background: #14263c;
+        color: #fff;
+        padding: 18px;
+      }
+      main {
+        max-width: 1050px;
+        margin: auto;
+        padding: 18px;
+      }
+      .tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 15px;
+      }
+      .tabs button,
+      .primary {
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 14px;
+      }
+      .primary,
+      .tabs .on {
+        background: #2676ed;
+        color: #fff;
+      }
+      .panel {
+        background: #fff;
+        border: 1px solid #e1e7ed;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 14px;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+      .cards b {
+        display: block;
+        font-size: 22px;
+        margin-top: 9px;
+      }
+      .scan {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .drop {
+        min-height: 420px;
+        border: 2px dashed #becbd7;
+        display: grid;
+        place-content: center;
+        text-align: center;
+      }
+      .drop img {
+        max-width: 100%;
+        max-height: 390px;
+      }
+      .form {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 11px;
+      }
+      .form label {
+        font-size: 12px;
+      }
+      .form input,
+      .form select {
+        width: 100%;
+        height: 39px;
+        margin-top: 5px;
+        border: 1px solid #d7e0e8;
+        border-radius: 7px;
+        padding: 7px;
+      }
+      .wide {
+        grid-column: 1/-1;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      th,
+      td {
+        padding: 10px;
+        border-bottom: 1px solid #edf0f3;
+        text-align: left;
+      }
+      @media (max-width: 700px) {
+        .cards {
+          grid-template-columns: 1fr 1fr;
+        }
+        .scan {
+          grid-template-columns: 1fr;
+        }
+        .drop {
+          min-height: 300px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header><b>Receipt Flow</b>　영수증 비용관리</header>
+    <main>
+      <div class="tabs">
+        <button onclick="show('dash', this)" class="on">대시보드</button
+        ><button onclick="show('scan', this)">영수증 스캔</button
+        ><button onclick="show('list', this)">영수증 내역</button>
+      </div>
+      <section id="dash">
+        <div class="cards">
+          <article class="panel">총 결제금액<b id="total">0원</b></article>
+          <article class="panel">등록 영수증<b id="count">0건</b></article>
+          <article class="panel">평균 결제액<b id="avg">0원</b></article>
+          <article class="panel">확인 필요<b id="pending">0건</b></article>
+        </div>
+        <div class="panel">
+          <h3>사용자별 지출</h3>
+          <div id="users"></div>
+        </div>
+      </section>
+      <section id="scan" hidden>
+        <div class="scan">
+          <div class="panel drop" onclick="file.click()">
+            <div id="photo">
+              <h2>⌁</h2>
+              <b>영수증 촬영</b>
+              <p>눌러서 카메라를 실행하세요.</p>
+            </div>
+            <input
+              id="file"
+              hidden
+              type="file"
+              accept="image/*"
+              capture="environment"
+            />
+          </div>
+          <form class="panel form" onsubmit="save(event)">
+            <label
+              >구매일자<input id="purchaseDate" type="date" required /></label
+            ><label>구매시간<input id="purchaseTime" type="time" /></label
+            ><label
+              >구매자<select
+                id="buyerName"
+                onchange="syncEmp()"
+              ></select></label
+            ><label>사번<input id="employeeId" readonly /></label
+            ><label class="wide">구매처<input id="merchant" required /></label
+            ><label>비용 분류<select id="category"></select></label
+            ><label>세부 분류<input id="subcategory" /></label
+            ><label class="wide">승인번호<input id="approvalNumber" /></label
+            ><label class="wide"
+              >결제금액<input id="amount" type="number" required /></label
+            ><button class="primary wide">확인 후 저장</button>
+          </form>
+        </div>
+      </section>
+      <section id="list" hidden>
+        <div class="panel" style="overflow: auto">
+          <table>
+            <thead>
+              <tr>
+                <th>구매일시</th>
+                <th>사용자</th>
+                <th>구매처</th>
+                <th>분류</th>
+                <th>승인번호</th>
+                <th>금액</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script>
+      let app = {},
+        image = "";
+      const $ = (id) => document.getElementById(id),
+        won = (n) => Number(n || 0).toLocaleString() + "원";
+      function show(id, b) {
+        ["dash", "scan", "list"].forEach((x) => ($(x).hidden = x !== id));
+        document
+          .querySelectorAll(".tabs button")
+          .forEach((x) => x.classList.remove("on"));
+        b.classList.add("on");
+      }
+      function init() {
+        google.script.run
+          .withSuccessHandler((d) => {
+            app = d;
+            $("buyerName").innerHTML = d.employees
+              .map(
+                (e) =>
+                  '<option value="' +
+                  e.name +
+                  '">' +
+                  e.name +
+                  " / " +
+                  e.employeeId +
+                  " / " +
+                  e.department +
+                  "</option>",
+              )
+              .join("");
+            $("category").innerHTML = d.categories
+              .map((x) => "<option>" + x + "</option>")
+              .join("");
+            syncEmp();
+            render(d);
+          })
+          .getInitialData();
+      }
+      function syncEmp() {
+        let e = app.employees?.find((x) => x.name == $("buyerName").value);
+        if (e) $("employeeId").value = e.employeeId;
+      }
+      function render(d) {
+        $("total").textContent = won(d.summary.total);
+        $("count").textContent = d.summary.count + "건";
+        $("avg").textContent = won(d.summary.average);
+        $("pending").textContent =
+          d.receipts.filter((r) => r["확인상태"] == "확인필요").length + "건";
+        $("users").innerHTML = Object.entries(d.summary.byUser)
+          .map(([k, v]) => "<p>" + k + "　<b>" + won(v) + "</b></p>")
+          .join("");
+        $("rows").innerHTML = d.receipts
+          .map(
+            (r) =>
+              "<tr><td>" +
+              r["구매일자"] +
+              " " +
+              r["구매시간"] +
+              "</td><td>" +
+              r["이름"] +
+              "<br>" +
+              r["사번"] +
+              "</td><td>" +
+              r["구매처"] +
+              "</td><td>" +
+              r["비용대분류"] +
+              "</td><td>" +
+              r["승인번호"] +
+              "</td><td>" +
+              won(r["결제금액"]) +
+              "</td></tr>",
+          )
+          .join("");
+      }
+      file.onchange = (e) => {
+        let f = e.target.files[0],
+          r = new FileReader();
+        r.onload = () => {
+          image = r.result;
+          photo.innerHTML = '<img src="' + image + '"><p>AI 분석 중…</p>';
+          google.script.run
+            .withSuccessHandler((x) => {
+              Object.entries(x).forEach(([k, v]) => {
+                if ($(k) && v !== undefined) $(k).value = v;
+              });
+              syncEmp();
+              photo.querySelector("p").textContent = "분석 완료";
+            })
+            .withFailureHandler((x) => alert(x.message))
+            .analyzeReceipt(image);
+        };
+        r.readAsDataURL(f);
+      };
+      function save(e) {
+        e.preventDefault();
+        let x = {};
+        [
+          "purchaseDate",
+          "purchaseTime",
+          "buyerName",
+          "employeeId",
+          "merchant",
+          "category",
+          "subcategory",
+          "approvalNumber",
+          "amount",
+        ].forEach((k) => (x[k] = $(k).value));
+        google.script.run
+          .withSuccessHandler(() => {
+            alert("저장했습니다.");
+            location.reload();
+          })
+          .withFailureHandler((x) => alert(x.message))
+          .saveReceipt(x, image);
+      }
+      init();
+    </script>
+  </body>
+</html>
