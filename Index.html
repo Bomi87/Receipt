@@ -188,10 +188,18 @@
       </section>
     </main>
     <script>
-      let app = {},
-        image = "";
-      const $ = (id) => document.getElementById(id),
-        won = (n) => Number(n || 0).toLocaleString() + "원";
+      // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
+      const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
+
+      // 백엔드 스크립트 속성 APP_API_TOKEN을 사용하지 않으면 빈칸으로 둡니다.
+      const API_TOKEN = "";
+
+      let app = {};
+      let image = "";
+
+      const $ = (id) => document.getElementById(id);
+      const won = (n) => Number(n || 0).toLocaleString() + "원";
+
       function show(id, b) {
         ["dash", "scan", "list"].forEach((x) => ($(x).hidden = x !== id));
         document
@@ -199,32 +207,113 @@
           .forEach((x) => x.classList.remove("on"));
         b.classList.add("on");
       }
-      function init() {
-        google.script.run
-          .withSuccessHandler((d) => {
-            app = d;
-            $("buyerName").innerHTML = d.employees
-              .map(
-                (e) =>
-                  '<option value="' +
-                  e.name +
-                  '">' +
-                  e.name +
-                  " / " +
-                  e.employeeId +
-                  " / " +
-                  e.department +
-                  "</option>",
-              )
-              .join("");
-            $("category").innerHTML = d.categories
-              .map((x) => "<option>" + x + "</option>")
-              .join("");
-            syncEmp();
-            render(d);
-          })
-          .getInitialData();
+      function checkBackendUrl() {
+        if (!BACKEND_URL.startsWith("https://script.google.com/macros/s/")) {
+          throw new Error(
+            "프론트 코드 상단의 BACKEND_URL에 Apps Script /exec 주소를 입력하세요.",
+          );
+        }
       }
+
+      function jsonp(action, params = {}) {
+        checkBackendUrl();
+        return new Promise((resolve, reject) => {
+          const callbackName =
+            "receiptCallback_" +
+            Date.now() +
+            "_" +
+            Math.random().toString(36).slice(2);
+          const script = document.createElement("script");
+          const timeout = setTimeout(() => {
+            cleanup();
+            reject(new Error("백엔드 응답 시간이 초과되었습니다."));
+          }, 30000);
+
+          function cleanup() {
+            clearTimeout(timeout);
+            delete window[callbackName];
+            script.remove();
+          }
+
+          window[callbackName] = (response) => {
+            cleanup();
+            response.ok
+              ? resolve(response)
+              : reject(new Error(response.error || "요청에 실패했습니다."));
+          };
+
+          const query = new URLSearchParams({
+            action,
+            token: API_TOKEN,
+            callback: callbackName,
+            ...params,
+          });
+          script.onerror = () => {
+            cleanup();
+            reject(new Error("백엔드에 연결할 수 없습니다."));
+          };
+          script.src = BACKEND_URL + "?" + query.toString();
+          document.head.appendChild(script);
+        });
+      }
+
+      async function postJob(action, values) {
+        checkBackendUrl();
+        const requestId =
+          Date.now().toString(36) + Math.random().toString(36).slice(2);
+        const body = new URLSearchParams({
+          action,
+          requestId,
+          token: API_TOKEN,
+          ...values,
+        });
+
+        fetch(BACKEND_URL, {
+          method: "POST",
+          mode: "no-cors",
+          body,
+        }).catch(() => {});
+
+        for (let i = 0; i < 90; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          const result = await jsonp("status", { requestId });
+          if (result.state === "done") return result.data;
+          if (result.state === "error") {
+            throw new Error(result.error || "처리 중 오류가 발생했습니다.");
+          }
+        }
+        throw new Error("처리 시간이 초과되었습니다. 다시 시도해 주세요.");
+      }
+
+      async function init() {
+        try {
+          const response = await jsonp("initial");
+          const d = response.data;
+          app = d;
+          $("buyerName").innerHTML = d.employees
+            .map(
+              (e) =>
+                '<option value="' +
+                e.name +
+                '">' +
+                e.name +
+                " / " +
+                e.employeeId +
+                " / " +
+                e.department +
+                "</option>",
+            )
+            .join("");
+          $("category").innerHTML = d.categories
+            .map((x) => "<option>" + x + "</option>")
+            .join("");
+          syncEmp();
+          render(d);
+        } catch (err) {
+          alert(err.message);
+        }
+      }
+
       function syncEmp() {
         let e = app.employees?.find((x) => x.name == $("buyerName").value);
         if (e) $("employeeId").value = e.employeeId;
@@ -261,28 +350,51 @@
           )
           .join("");
       }
-      file.onchange = (e) => {
-        let f = e.target.files[0],
-          r = new FileReader();
-        r.onload = () => {
-          image = r.result;
+      async function compressImage(file) {
+        const source = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const img = await new Promise((resolve, reject) => {
+          const element = new Image();
+          element.onload = () => resolve(element);
+          element.onerror = reject;
+          element.src = source;
+        });
+        const maxSize = 1800;
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas
+          .getContext("2d")
+          .drawImage(img, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL("image/jpeg", 0.82);
+      }
+
+      file.onchange = async (e) => {
+        const selectedFile = e.target.files[0];
+        if (!selectedFile) return;
+        try {
+          image = await compressImage(selectedFile);
           photo.innerHTML = '<img src="' + image + '"><p>AI 분석 중…</p>';
-          google.script.run
-            .withSuccessHandler((x) => {
-              Object.entries(x).forEach(([k, v]) => {
-                if ($(k) && v !== undefined) $(k).value = v;
-              });
-              syncEmp();
-              photo.querySelector("p").textContent = "분석 완료";
-            })
-            .withFailureHandler((x) => alert(x.message))
-            .analyzeReceipt(image);
-        };
-        r.readAsDataURL(f);
+          const x = await postJob("analyze", { image });
+          Object.entries(x).forEach(([k, v]) => {
+            if ($(k) && v !== undefined) $(k).value = v;
+          });
+          syncEmp();
+          photo.querySelector("p").textContent = "분석 완료";
+        } catch (err) {
+          photo.querySelector("p").textContent = "분석 실패";
+          alert(err.message);
+        }
       };
-      function save(e) {
+
+      async function save(e) {
         e.preventDefault();
-        let x = {};
+        const x = {};
         [
           "purchaseDate",
           "purchaseTime",
@@ -294,14 +406,19 @@
           "approvalNumber",
           "amount",
         ].forEach((k) => (x[k] = $(k).value));
-        google.script.run
-          .withSuccessHandler(() => {
-            alert("저장했습니다.");
-            location.reload();
-          })
-          .withFailureHandler((x) => alert(x.message))
-          .saveReceipt(x, image);
+
+        try {
+          await postJob("save", {
+            payload: JSON.stringify(x),
+            image,
+          });
+          alert("저장했습니다.");
+          location.reload();
+        } catch (err) {
+          alert(err.message);
+        }
       }
+
       init();
     </script>
   </body>
