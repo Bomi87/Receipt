@@ -242,7 +242,6 @@
 
           const query = new URLSearchParams({
             action,
-            token: API_TOKEN,
             callback: callbackName,
             ...params,
           });
@@ -262,7 +261,6 @@
         const body = new URLSearchParams({
           action,
           requestId,
-          token: API_TOKEN,
           ...values,
         });
 
