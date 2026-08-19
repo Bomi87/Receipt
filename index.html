@@ -20,6 +20,20 @@
         color: #18293b;
         overflow-x: hidden;
       }
+      button {
+        transition: background-color 0.14s ease, color 0.14s ease,
+          border-color 0.14s ease, transform 0.08s ease, filter 0.14s ease;
+        -webkit-tap-highlight-color: rgba(38, 118, 237, 0.2);
+        touch-action: manipulation;
+      }
+      button:active {
+        transform: scale(0.96);
+        filter: brightness(0.82);
+      }
+      button:focus-visible {
+        outline: 3px solid rgba(38, 118, 237, 0.28);
+        outline-offset: 2px;
+      }
       header {
         background: #14263c;
         color: #fff;
@@ -85,6 +99,11 @@
         background: #fff;
         padding: 0 9px;
         font-size: 16px;
+      }
+      .filters button:active {
+        border-color: #2676ed;
+        background: #2676ed;
+        color: #fff;
       }
       .dashboard-grid {
         display: grid;
@@ -328,30 +347,6 @@
         padding: 6px 9px;
         font-size: 12px;
       }
-      .recent-receipt {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 14px;
-        border-left: 4px solid #2676ed;
-      }
-      .recent-receipt-info {
-        min-width: 0;
-      }
-      .recent-receipt-info b,
-      .recent-receipt-info span {
-        display: block;
-      }
-      .recent-receipt-info span {
-        margin-top: 5px;
-        color: #607286;
-        font-size: 13px;
-      }
-      .recent-receipt-actions {
-        display: flex;
-        flex-shrink: 0;
-        gap: 7px;
-      }
       .wide {
         grid-column: 1/-1;
       }
@@ -399,15 +394,6 @@
         .bar-row {
           grid-template-columns: 80px 1fr auto;
         }
-        .recent-receipt {
-          align-items: stretch;
-          flex-direction: column;
-        }
-        .recent-receipt-actions button {
-          flex: 1;
-          min-height: 42px;
-          font-size: 14px;
-        }
       }
     </style>
   </head>
@@ -446,16 +432,6 @@
         </div>
       </section>
       <section id="scan" hidden>
-        <div id="recentReceiptBar" class="panel recent-receipt" hidden>
-          <div class="recent-receipt-info">
-            <b>최근 저장한 영수증</b>
-            <span id="recentReceiptText"></span>
-          </div>
-          <div class="recent-receipt-actions">
-            <button type="button" class="table-action" onclick="loadLastSavedReceipt()">수정 불러오기</button>
-            <button type="button" class="danger" onclick="deleteLastSavedReceipt()">삭제</button>
-          </div>
-        </div>
         <div class="scan">
           <div class="panel drop" onclick="file.click()">
             <div id="photo">
@@ -543,7 +519,6 @@
    
       let app = {};
       let image = "";
-      const LAST_RECEIPT_KEY = "receiptFlow.lastSavedReceiptId";
 
       const $ = (id) => document.getElementById(id);
       const won = (n) => Number(n || 0).toLocaleString("ko-KR") + "원";
@@ -668,7 +643,6 @@
           $("buyerName").value = "";
           $("employeeId").value = "";
           render(d);
-          renderRecentReceiptBar();
         } catch (err) {
           alert(err.message);
         }
@@ -836,55 +810,6 @@
         return (app.receipts || []).find((r) => String(r["영수증ID"]) === String(receiptId));
       }
 
-      function lastSavedReceiptId() {
-        try {
-          return sessionStorage.getItem(LAST_RECEIPT_KEY) || "";
-        } catch (err) {
-          return "";
-        }
-      }
-
-      function rememberLastSavedReceipt(receiptId) {
-        try {
-          sessionStorage.setItem(LAST_RECEIPT_KEY, String(receiptId || ""));
-        } catch (err) {}
-      }
-
-      function forgetLastSavedReceipt() {
-        try {
-          sessionStorage.removeItem(LAST_RECEIPT_KEY);
-        } catch (err) {}
-      }
-
-      function renderRecentReceiptBar() {
-        const r = receiptById(lastSavedReceiptId());
-        $("recentReceiptBar").hidden = !r;
-        if (!r) return;
-        $("recentReceiptText").textContent =
-          (r["구매일자"] || "") + " · " + (r["구매처"] || "") + " · " +
-          money(r["결제금액"], currencyOf(r));
-      }
-
-      function loadLastSavedReceipt() {
-        const receiptId = lastSavedReceiptId();
-        if (!receiptId || !receiptById(receiptId)) {
-          alert("이 탭에서 최근 저장한 영수증을 찾을 수 없습니다.");
-          renderRecentReceiptBar();
-          return;
-        }
-        editReceipt(receiptId);
-      }
-
-      function deleteLastSavedReceipt() {
-        const receiptId = lastSavedReceiptId();
-        if (!receiptId || !receiptById(receiptId)) {
-          alert("이 탭에서 최근 저장한 영수증을 찾을 수 없습니다.");
-          renderRecentReceiptBar();
-          return;
-        }
-        deleteReceiptById(receiptId);
-      }
-
       function editReceipt(receiptId) {
         const r = receiptById(receiptId);
         if (!r) {
@@ -934,7 +859,6 @@
           await postJob("delete", {
             payload: JSON.stringify({ receiptId: r["영수증ID"], version: r._version }),
           });
-          if (lastSavedReceiptId() === String(r["영수증ID"])) forgetLastSavedReceipt();
           alert("삭제했습니다.");
           location.reload();
         } catch (err) {
@@ -1122,10 +1046,9 @@
         }
 
         try {
-          const result = await postJob(editingId ? "update" : "save", {
+          await postJob(editingId ? "update" : "save", {
             payload: JSON.stringify(x),
           });
-          rememberLastSavedReceipt(result.id || editingId);
           alert(editingId ? "수정 내용을 저장했습니다." : "저장했습니다.");
           location.reload();
         } catch (err) {
