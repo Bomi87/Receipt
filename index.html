@@ -134,6 +134,48 @@
         background: #2676ed;
         color: #fff;
       }
+      .criteria-picker {
+        border: 1px solid #d7e0e8;
+        border-radius: 10px;
+        padding: 12px;
+        margin-bottom: 16px;
+        background: #f8fafc;
+      }
+      .criteria-picker-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .criteria-picker-head button {
+        border: 0;
+        border-radius: 7px;
+        padding: 7px 10px;
+      }
+      .criteria-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        max-height: 160px;
+        overflow: auto;
+      }
+      .criteria-options label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid #d7e0e8;
+        border-radius: 18px;
+        background: #fff;
+        padding: 7px 10px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .criteria-summary {
+        margin: 0 0 14px;
+        color: #52677d;
+        font-size: 13px;
+      }
       .clickable {
         cursor: pointer;
         padding: 5px;
@@ -245,7 +287,7 @@
           <article class="panel">등록 영수증<b id="count">0건</b></article>
         </div>
         <div class="panel">
-          <h3 class="chart-title">통계 조회 기준</h3>
+          <h3 class="chart-title">조회 기준</h3>
           <div class="breakdown-tabs">
             <button type="button" class="on" onclick="setBreakdown('이름', this)">사용자별</button>
             <button type="button" onclick="setBreakdown('소속', this)">부서별</button>
@@ -253,24 +295,20 @@
             <button type="button" onclick="setBreakdown('연도', this)">연도별</button>
             <button type="button" onclick="setBreakdown('월', this)">월별</button>
           </div>
+          <div id="criteriaPicker" class="criteria-picker">
+            <div class="criteria-picker-head">
+              <b id="criteriaPickerTitle">사용자 선택 (복수 선택 가능)</b>
+              <button type="button" onclick="clearCurrentCriteria()">현재 항목 해제</button>
+            </div>
+            <div id="criteriaOptions" class="criteria-options"></div>
+          </div>
+          <p id="criteriaSummary" class="criteria-summary">선택된 조회 조건 없음</p>
           <div id="breakdownChart"></div>
         </div>
-        <div id="breakdownDetail" class="panel" hidden>
-          <div class="detail-head">
-            <h3 id="breakdownDetailTitle" class="chart-title"></h3>
-            <button type="button" onclick="closeBreakdownDetail()">닫기</button>
-          </div>
-          <div style="overflow:auto">
-            <table class="rank-table">
-              <thead><tr><th>구매일시</th><th>사용자</th><th>소속</th><th>구매처</th><th>분류</th><th>승인번호</th><th>금액</th></tr></thead>
-              <tbody id="breakdownDetailRows"></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="panel" style="overflow:auto">
-          <h3 class="chart-title">영수증 금액 순위</h3>
+        <div id="dashboardReceiptPanel" class="panel" style="overflow:auto">
+          <h3 id="dashboardReceiptTitle" class="chart-title">결과 Data</h3>
           <table class="rank-table">
-            <thead><tr><th>순위</th><th>구매일자</th><th>사용자</th><th>소속</th><th>구매처</th><th>분류</th><th>금액</th></tr></thead>
+            <thead><tr><th>구매일시</th><th>사용자</th><th>구매처</th><th>분류</th><th>승인번호</th><th>금액</th></tr></thead>
             <tbody id="rankingRows"></tbody>
           </table>
         </div>
@@ -345,6 +383,13 @@
       }) + " " + code;
       const DEPARTMENTS = ["담당", "팀장", "기획", "객실", "정비", "운항관리", "조종", "헬기"];
       let breakdownKey = "이름";
+      const criteriaSelections = {
+        이름: new Set(),
+        소속: new Set(),
+        비용대분류: new Set(),
+        연도: new Set(),
+        월: new Set(),
+      };
 
       function show(id, b) {
         ["dash", "scan", "list"].forEach((x) => ($(x).hidden = x !== id));
@@ -434,7 +479,7 @@
           const response = await jsonp("initial");
           const d = response.data;
           app = d;
-          $("buyerName").innerHTML = d.employees
+          $("buyerName").innerHTML = '<option value="">구매자를 선택하세요</option>' + d.employees
             .map(
               (e) =>
                 '<option value="' +
@@ -452,7 +497,8 @@
             .map((x) => "<option>" + x + "</option>")
             .join("");
           setupDashboardFilters();
-          syncEmp();
+          $("buyerName").value = "";
+          $("employeeId").value = "";
           render(d);
         } catch (err) {
           alert(err.message);
@@ -461,7 +507,7 @@
 
       function syncEmp() {
         let e = app.employees?.find((x) => x.name == $("buyerName").value);
-        if (e) $("employeeId").value = e.employeeId;
+        $("employeeId").value = e ? e.employeeId : "";
       }
       const escapeHtml = (value) =>
         String(value ?? "")
@@ -496,10 +542,11 @@
       function resetDashboardFilters() {
         ["filterYear", "filterMonth", "filterEmployee", "filterDepartment", "filterCategory", "filterCurrency"]
           .forEach((id) => ($(id).value = ""));
+        Object.values(criteriaSelections).forEach((values) => values.clear());
         applyDashboardFilters();
       }
 
-      function filteredReceipts() {
+      function baseFilteredReceipts() {
         const year = $("filterYear").value;
         const month = $("filterMonth").value;
         const employee = $("filterEmployee").value;
@@ -516,6 +563,14 @@
         );
       }
 
+      function filteredReceipts() {
+        return baseFilteredReceipts().filter((r) =>
+          Object.entries(criteriaSelections).every(([key, values]) =>
+            !values.size || values.has(String(r[key] || "미분류"))
+          )
+        );
+      }
+
       function groupAmounts(rows, key) {
         return Object.entries(rows.reduce((group, row) => {
           const name = String(row[key] || "미분류");
@@ -528,8 +583,48 @@
         breakdownKey = key;
         document.querySelectorAll(".breakdown-tabs button").forEach((x) => x.classList.remove("on"));
         button.classList.add("on");
-        closeBreakdownDetail();
-        renderBreakdown(filteredReceipts());
+        renderCriteriaPicker();
+        applyDashboardFilters();
+      }
+
+      function criterionTitle(key) {
+        return ({ 이름: "사용자", 소속: "부서", 비용대분류: "비용분류", 연도: "연도", 월: "월" })[key];
+      }
+
+      function renderCriteriaPicker() {
+        const values = uniqueValues(baseFilteredReceipts(), breakdownKey);
+        const selected = criteriaSelections[breakdownKey];
+        $("criteriaPickerTitle").textContent = criterionTitle(breakdownKey) + " 선택 (복수 선택 가능)";
+        $("criteriaOptions").innerHTML = values.length
+          ? values.map((value) =>
+              '<label><input type="checkbox" value="' + escapeHtml(value) + '"' +
+              (selected.has(value) ? " checked" : "") + ">" +
+              escapeHtml(breakdownLabel(breakdownKey, value)) + "</label>"
+            ).join("")
+          : '<span class="empty">선택 가능한 데이터가 없습니다.</span>';
+        $("criteriaOptions").querySelectorAll('input[type="checkbox"]').forEach((input) => {
+          input.addEventListener("change", () => {
+            if (input.checked) selected.add(input.value);
+            else selected.delete(input.value);
+            applyDashboardFilters();
+          });
+        });
+      }
+
+      function clearCurrentCriteria() {
+        criteriaSelections[breakdownKey].clear();
+        renderCriteriaPicker();
+        applyDashboardFilters();
+      }
+
+      function renderCriteriaSummary() {
+        const parts = Object.entries(criteriaSelections)
+          .filter(([, values]) => values.size)
+          .map(([key, values]) => criterionTitle(key) + ": " +
+            [...values].map((value) => breakdownLabel(key, value)).join(", "));
+        $("criteriaSummary").textContent = parts.length
+          ? "적용 중 · " + parts.join(" / ")
+          : "선택된 조회 조건 없음";
       }
 
       function breakdownLabel(key, value) {
@@ -567,30 +662,33 @@
       }
 
       function showBreakdownDetail(value) {
-        const rows = filteredReceipts()
-          .filter((r) => String(r[breakdownKey] || "미분류") === String(value))
-          .sort((a, b) => Number(b["결제금액"] || 0) - Number(a["결제금액"] || 0));
-        const titleMap = {
-          이름: "사용자",
-          소속: "부서",
-          비용대분류: "비용분류",
-          연도: "연도",
-          월: "월",
-        };
-        $("breakdownDetailTitle").textContent =
-          titleMap[breakdownKey] + " · " + breakdownLabel(breakdownKey, value) + " 영수증 내역";
-        $("breakdownDetailRows").innerHTML = rows.map((r) =>
-          "<tr><td>" + escapeHtml(r["구매일자"]) + " " + escapeHtml(r["구매시간"]) +
-          "</td><td>" + escapeHtml(r["이름"]) + "</td><td>" + escapeHtml(r["소속"]) +
-          "</td><td>" + escapeHtml(r["구매처"]) + "</td><td>" + escapeHtml(r["비용대분류"]) +
-          "</td><td>" + escapeHtml(r["승인번호"]) + "</td><td><b>" + money(r["결제금액"], currencyOf(r)) + "</b></td></tr>"
-        ).join("");
-        $("breakdownDetail").hidden = false;
-        $("breakdownDetail").scrollIntoView({ behavior: "smooth", block: "start" });
+        const selected = criteriaSelections[breakdownKey];
+        if (selected.has(value)) selected.delete(value);
+        else selected.add(value);
+        renderCriteriaPicker();
+        applyDashboardFilters();
       }
 
-      function closeBreakdownDetail() {
-        $("breakdownDetail").hidden = true;
+      function receiptDateTime(r) {
+        return String(r["구매일자"] || "") + " " + String(r["구매시간"] || "");
+      }
+
+      function sortReceiptsNewest(rows) {
+        return [...rows].sort((a, b) => receiptDateTime(b).localeCompare(receiptDateTime(a)));
+      }
+
+      function renderDashboardReceiptTable(rows, title = "결과 Data") {
+        const sorted = sortReceiptsNewest(rows);
+        $("dashboardReceiptTitle").textContent = title;
+        $("rankingRows").innerHTML = sorted.length
+          ? sorted.map((r) =>
+              "<tr><td>" + escapeHtml(r["구매일자"]) + " " + escapeHtml(r["구매시간"]) +
+              "</td><td>" + escapeHtml(r["이름"]) + "<br>" + escapeHtml(r["사번"]) +
+              "</td><td>" + escapeHtml(r["구매처"]) + "</td><td>" + escapeHtml(r["비용대분류"]) +
+              "</td><td>" + escapeHtml(r["승인번호"]) + "</td><td><b>" +
+              money(r["결제금액"], currencyOf(r)) + "</b></td></tr>"
+            ).join("")
+          : '<tr><td colspan="6" class="empty">조건에 해당하는 데이터가 없습니다.</td></tr>';
       }
 
       function drawBars(id, entries, colorClass = "", limit = 12) {
@@ -619,22 +717,15 @@
           ? Object.entries(totals).map(([code, value]) => money(value, code)).join("<br>")
           : "0 KRW";
         $("count").textContent = rows.length + "건";
-        closeBreakdownDetail();
+        renderCriteriaPicker();
+        renderCriteriaSummary();
         renderBreakdown(rows);
-
-        const ranked = [...rows].sort((a, b) => Number(b["결제금액"] || 0) - Number(a["결제금액"] || 0));
-        $("rankingRows").innerHTML = ranked.length
-          ? ranked.map((r, i) => "<tr><td>" + (i + 1) + "</td><td>" + escapeHtml(r["구매일자"]) +
-              "</td><td>" + escapeHtml(r["이름"]) + "</td><td>" + escapeHtml(r["소속"]) +
-              "</td><td>" + escapeHtml(r["구매처"]) + "</td><td>" + escapeHtml(r["비용대분류"]) +
-              "</td><td><b>" + money(r["결제금액"], currencyOf(r)) + "</b></td></tr>").join("")
-          : '<tr><td colspan="7" class="empty">조건에 해당하는 데이터가 없습니다.</td></tr>';
+        renderDashboardReceiptTable(rows, "결과 Data");
       }
 
       function render(d) {
         applyDashboardFilters();
-        $("rows").innerHTML = [...d.receipts]
-          .sort((a, b) => String(b["구매일자"]).localeCompare(String(a["구매일자"])))
+        $("rows").innerHTML = sortReceiptsNewest(d.receipts)
           .map(
             (r) =>
               "<tr><td>" +
