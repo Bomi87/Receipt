@@ -197,7 +197,8 @@
       }
       .rank-table td:last-child,
       .rank-table th:last-child {
-        text-align: right;
+        text-align: center;
+        white-space: nowrap;
       }
       .breakdown-tabs {
         display: flex;
@@ -813,7 +814,11 @@
           convertedAmounts.some((value) => value === null)
         ) return "";
         const total = convertedAmounts.reduce((sum, value) => sum + value, 0);
-        return "(약 " + Math.round(total).toLocaleString("ko-KR") + "원)";
+        return "(약 " + roundKrwToHundreds(total).toLocaleString("ko-KR") + "원)";
+      }
+
+      function roundKrwToHundreds(value) {
+        return Math.round(Number(value || 0) / 100) * 100;
       }
 
       async function loadExchangeRates() {
@@ -1041,7 +1046,7 @@
           convertedAmounts.every((value) => value !== null);
         $("totalTitle").innerHTML = canShowApproximateTotal
           ? '총 결제금액 <em class="total-title-approx">(약 ' +
-            Math.round(convertedAmounts.reduce((sum, value) => sum + value, 0)).toLocaleString("ko-KR") +
+            roundKrwToHundreds(convertedAmounts.reduce((sum, value) => sum + value, 0)).toLocaleString("ko-KR") +
             "원)</em>"
           : "총 결제금액";
         $("count").textContent = rows.length + "건";
