@@ -519,6 +519,7 @@
    
       let app = {};
       let image = "";
+      const ACTIVE_TAB_KEY = "receiptFlow.activeTab";
 
       const $ = (id) => document.getElementById(id);
       const won = (n) => Number(n || 0).toLocaleString("ko-KR") + "원";
@@ -535,6 +536,19 @@
           .querySelectorAll(".tabs button")
           .forEach((x) => x.classList.remove("on"));
         b.classList.add("on");
+        try {
+          sessionStorage.setItem(ACTIVE_TAB_KEY, id);
+        } catch (err) {}
+      }
+
+      function restoreActiveTab() {
+        let id = "dash";
+        try {
+          id = sessionStorage.getItem(ACTIVE_TAB_KEY) || "dash";
+        } catch (err) {}
+        const buttonMap = { dash: "tabDash", scan: "tabScan", list: "tabList" };
+        if (!buttonMap[id]) id = "dash";
+        show(id, $(buttonMap[id]));
       }
 
       function openNewScan(button) {
@@ -643,6 +657,7 @@
           $("buyerName").value = "";
           $("employeeId").value = "";
           render(d);
+          restoreActiveTab();
         } catch (err) {
           alert(err.message);
         }
