@@ -563,7 +563,7 @@
         }
       }
 
-      function jsonp(action, params = {}) {
+      function jsonpOnce(action, params = {}) {
         checkBackendUrl();
         return new Promise((resolve, reject) => {
           const callbackName =
@@ -574,7 +574,9 @@
           const script = document.createElement("script");
           const timeout = setTimeout(() => {
             cleanup();
-            reject(new Error("백엔드 응답 시간이 초과되었습니다."));
+            const error = new Error("백엔드 응답 시간이 초과되었습니다.");
+            error.isNetworkError = true;
+            reject(error);
           }, 60000);
 
           function cleanup() {
@@ -597,7 +599,9 @@
           });
           script.onerror = () => {
             cleanup();
-            reject(new Error("백엔드에 연결할 수 없습니다."));
+            const error = new Error("백엔드에 연결할 수 없습니다.");
+            error.isNetworkError = true;
+            reject(error);
           };
           script.src = BACKEND_URL + "?" + query.toString();
           document.head.appendChild(script);
@@ -657,6 +661,7 @@
           $("buyerName").value = "";
           $("employeeId").value = "";
           render(d);
+          loadExchangeRates();
         } catch (err) {
           alert(err.message);
         }
@@ -746,9 +751,42 @@
       function groupAmounts(rows, key) {
         return Object.entries(rows.reduce((group, row) => {
           const name = String(row[key] || "미분류");
-          group[name] = (group[name] || 0) + Number(row["결제금액"] || 0);
+          const converted = currentKrwAmount(row);
+          if (converted !== null) group[name] = (group[name] || 0) + converted;
           return group;
         }, {})).sort((a, b) => b[1] - a[1]);
+      }
+
+      function originalAmountLabel(rows) {
+        const totals = rows.reduce((group, row) => {
+          const code = currencyOf(row);
+          group[code] = (group[code] || 0) + Number(row["결제금액"] || 0);
+          return group;
+        }, {});
+        return Object.entries(totals)
+          .map(([code, amount]) => money(amount, code))
+          .join(" + ");
+      }
+
+      async function loadExchangeRates() {
+        const currencies = [...new Set((app.receipts || []).map(currencyOf))]
+          .filter((code) => code !== "KRW");
+        if (!currencies.length) return;
+        try {
+          const response = await jsonp("rates", { currencies: currencies.join(",") });
+          app.exchangeRates = { ...(app.exchangeRates || {}), ...(response.data || {}) };
+          applyDashboardFilters();
+        } catch (err) {
+          console.warn("환율 갱신 실패:", err.message);
+        }
+      }
+
+      function currentKrwAmount(row) {
+        const amount = Number(row["결제금액"] || 0);
+        const code = currencyOf(row);
+        if (code === "KRW") return amount;
+        const rate = Number(app.exchangeRates?.[code]?.rate || 0);
+        return rate > 0 ? amount * rate : null;
       }
 
       function breakdownLabel(key, value) {
@@ -758,12 +796,6 @@
       }
 
       function renderBreakdown(rows) {
-        const currencies = [...new Set(rows.map(currencyOf))];
-        if (currencies.length > 1) {
-          $("breakdownChart").innerHTML = '<div class="empty">통화별 정확한 비교를 위해 위에서 통화를 하나 선택하세요.</div>';
-          return;
-        }
-        const code = currencies[0] || "KRW";
         let entries = groupAmounts(rows, breakdownKey);
         if (breakdownKey === "연도" || breakdownKey === "월") {
           entries.sort((a, b) => Number(a[0]) - Number(b[0]));
@@ -774,15 +806,31 @@
         }
         const max = Math.max(...entries.map((x) => Number(x[1]) || 0), 1);
         $("breakdownChart").innerHTML = entries.map(([value, amount]) => {
-          const count = rows.filter((r) => String(r[breakdownKey] || "미분류") === String(value)).length;
+          const matchingRows = rows.filter((r) => String(r[breakdownKey] || "미분류") === String(value));
+          const count = matchingRows.length;
           return '<div class="bar-row clickable" data-value="' + escapeHtml(value) + '"><span>' +
             escapeHtml(breakdownLabel(breakdownKey, value)) + ' <small>(' + count + '건)</small></span>' +
             '<div class="bar-track"><div class="bar-fill" style="width:' +
-            Math.max(2, Math.round(Number(amount) / max * 100)) + '%"></div></div><b>' + money(amount, code) + "</b></div>";
+            Math.max(2, Math.round(Number(amount) / max * 100)) + '%"></div></div><b>' +
+            escapeHtml(originalAmountLabel(matchingRows)) + "</b></div>";
         }).join("");
         $("breakdownChart").querySelectorAll(".clickable").forEach((row) => {
           row.addEventListener("click", () => showBreakdownDetail(row.dataset.value));
         });
+      }
+
+      async function jsonp(action, params = {}) {
+        let lastError;
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+          try {
+            return await jsonpOnce(action, params);
+          } catch (err) {
+            lastError = err;
+            if (!err.isNetworkError || attempt === 3) throw err;
+            await new Promise((resolve) => setTimeout(resolve, attempt * 700));
+          }
+        }
+        throw lastError || new Error("백엔드에 연결할 수 없습니다.");
       }
 
       function showBreakdownDetail(value) {
@@ -898,10 +946,10 @@
       function applyDashboardFilters() {
         refreshDashboardFilterOptions();
         const rows = filteredReceipts();
-        const totals = rows.reduce((o, r) => {
-          const code = currencyOf(r);
-          o[code] = (o[code] || 0) + Number(r["결제금액"] || 0);
-          return o;
+        const totals = rows.reduce((group, row) => {
+          const code = currencyOf(row);
+          group[code] = (group[code] || 0) + Number(row["결제금액"] || 0);
+          return group;
         }, {});
         $("total").innerHTML = Object.entries(totals).length
           ? Object.entries(totals).map(([code, value]) => money(value, code)).join("<br>")
