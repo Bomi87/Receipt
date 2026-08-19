@@ -670,7 +670,7 @@
           element.onerror = reject;
           element.src = source;
         });
-        const maxSize = 1800;
+        const maxSize = 2800;
         const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
         const canvas = document.createElement("canvas");
         canvas.width = Math.round(img.width * scale);
@@ -678,7 +678,54 @@
         canvas
           .getContext("2d")
           .drawImage(img, 0, 0, canvas.width, canvas.height);
-        return canvas.toDataURL("image/jpeg", 0.82);
+        return canvas.toDataURL("image/jpeg", 0.95);
+      }
+
+      async function createCriticalImage(source, regions) {
+        const img = await new Promise((resolve, reject) => {
+          const element = new Image();
+          element.onload = () => resolve(element);
+          element.onerror = reject;
+          element.src = source;
+        });
+        const selected = Array.isArray(regions) && regions.length
+          ? regions.slice(0, 4)
+          : [{ x: 0, y: 0.42, width: 1, height: 0.58 }];
+        const outputWidth = 2200;
+        const prepared = selected.map((r) => {
+          const sx = Math.max(0, Math.round(Number(r.x || 0) * img.width));
+          const sy = Math.max(0, Math.round(Number(r.y || 0) * img.height));
+          const sw = Math.max(1, Math.min(img.width - sx, Math.round(Number(r.width || 1) * img.width)));
+          const sh = Math.max(1, Math.min(img.height - sy, Math.round(Number(r.height || 1) * img.height)));
+          const scale = outputWidth / sw;
+          return { sx, sy, sw, sh, height: Math.max(160, Math.round(sh * scale)) };
+        });
+        const gap = 24;
+        const canvas = document.createElement("canvas");
+        canvas.width = outputWidth;
+        canvas.height = prepared.reduce((sum, r) => sum + r.height * 2 + gap * 2, 0);
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        let y = 0;
+        prepared.forEach((r) => {
+          ctx.drawImage(img, r.sx, r.sy, r.sw, r.sh, 0, y, outputWidth, r.height);
+          y += r.height + gap;
+          ctx.drawImage(img, r.sx, r.sy, r.sw, r.sh, 0, y, outputWidth, r.height);
+          const pixels = ctx.getImageData(0, y, outputWidth, r.height);
+          for (let i = 0; i < pixels.data.length; i += 4) {
+            const gray = pixels.data[i] * 0.299 + pixels.data[i + 1] * 0.587 + pixels.data[i + 2] * 0.114;
+            const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.55 + 128));
+            pixels.data[i] = contrasted;
+            pixels.data[i + 1] = contrasted;
+            pixels.data[i + 2] = contrasted;
+          }
+          ctx.putImageData(pixels, 0, y);
+          y += r.height + gap;
+        });
+        return canvas.toDataURL("image/jpeg", 0.96);
       }
 
       file.onchange = async (e) => {
@@ -686,8 +733,16 @@
         if (!selectedFile) return;
         try {
           image = await compressImage(selectedFile);
-          photo.innerHTML = '<img src="' + image + '"><p>AI 분석 중…</p>';
-          const x = await postJob("analyze", { image });
+          photo.innerHTML = '<img src="' + image + '"><p>Vision OCR 분석 중…</p>';
+          const vision = await postJob("vision", { image });
+          photo.querySelector("p").textContent = "숫자 영역 확대 중…";
+          const criticalImage = await createCriticalImage(image, vision.regions);
+          photo.querySelector("p").textContent = "AI 정밀 분석 중…";
+          const x = await postJob("analyze", {
+            image,
+            criticalImage,
+            ocrText: vision.text || "",
+          });
           Object.entries(x).forEach(([k, v]) => {
             if ($(k) && v !== undefined) $(k).value = v;
           });
