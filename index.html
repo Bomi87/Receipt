@@ -1,14 +1,24 @@
 <!doctype html>
 <html lang="ko">
   <head>
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
     <title>영수증 비용관리</title>
     <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html {
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
       body {
         font-family: Arial;
         margin: 0;
         background: #f4f7fa;
         color: #18293b;
+        overflow-x: hidden;
       }
       header {
         background: #14263c;
@@ -16,6 +26,7 @@
         padding: 18px;
       }
       main {
+        width: 100%;
         max-width: 1050px;
         margin: auto;
         padding: 18px;
@@ -72,6 +83,7 @@
         border-radius: 8px;
         background: #fff;
         padding: 0 9px;
+        font-size: 16px;
       }
       .dashboard-grid {
         display: grid;
@@ -153,6 +165,16 @@
         border-radius: 7px;
         padding: 7px 10px;
       }
+      .criteria-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 7px;
+      }
+      .criteria-actions .clear-all {
+        background: #2676ed;
+        color: #fff;
+      }
       .criteria-options {
         display: flex;
         flex-wrap: wrap;
@@ -213,20 +235,79 @@
       }
       .form {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 11px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px 14px;
+        align-content: start;
       }
       .form label {
-        font-size: 12px;
+        display: block;
+        min-width: 0;
+        color: #52677d;
+        font-size: 13px;
+        font-weight: 600;
       }
       .form input,
       .form select {
+        display: block;
         width: 100%;
-        height: 39px;
-        margin-top: 5px;
+        min-width: 0;
+        height: 48px;
+        margin-top: 7px;
         border: 1px solid #d7e0e8;
-        border-radius: 7px;
-        padding: 7px;
+        border-radius: 9px;
+        background: #fff;
+        color: #18293b;
+        padding: 0 12px;
+        font-family: inherit;
+        font-size: 16px;
+        line-height: 1.2;
+      }
+      .form input:focus,
+      .form select:focus {
+        border-color: #2676ed;
+        outline: 3px solid rgba(38, 118, 237, 0.12);
+      }
+      .form input[type="hidden"] {
+        display: none;
+      }
+      .form .primary {
+        width: 100%;
+        min-height: 48px;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .form-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .secondary,
+      .danger,
+      .table-action {
+        border: 0;
+        border-radius: 8px;
+        padding: 9px 11px;
+        cursor: pointer;
+      }
+      .secondary,
+      .table-action {
+        background: #edf2f7;
+        color: #29435f;
+      }
+      .danger {
+        background: #e5484d;
+        color: #fff;
+      }
+      .row-actions {
+        display: flex;
+        gap: 6px;
+        white-space: nowrap;
+      }
+      .row-actions .danger,
+      .row-actions .table-action {
+        padding: 6px 9px;
+        font-size: 12px;
       }
       .wide {
         grid-column: 1/-1;
@@ -249,6 +330,13 @@
         .scan {
           grid-template-columns: 1fr;
         }
+        .form {
+          grid-template-columns: 1fr;
+          gap: 14px;
+        }
+        .form .wide {
+          grid-column: auto;
+        }
         .drop {
           min-height: 300px;
         }
@@ -268,9 +356,9 @@
     <header><b>Receipt Flow</b>　영수증 비용관리</header>
     <main>
       <div class="tabs">
-        <button onclick="show('dash', this)" class="on">대시보드</button
-        ><button onclick="show('scan', this)">영수증 스캔</button
-        ><button onclick="show('list', this)">영수증 내역</button>
+        <button id="tabDash" onclick="show('dash', this)" class="on">대시보드</button
+        ><button id="tabScan" onclick="show('scan', this)">영수증 스캔</button
+        ><button id="tabList" onclick="show('list', this)">영수증 내역</button>
       </div>
       <section id="dash">
         <div class="panel filters">
@@ -287,28 +375,13 @@
           <article class="panel">등록 영수증<b id="count">0건</b></article>
         </div>
         <div class="panel">
-          <h3 class="chart-title">조회 기준</h3>
-          <div class="breakdown-tabs">
-            <button type="button" class="on" onclick="setBreakdown('이름', this)">사용자별</button>
-            <button type="button" onclick="setBreakdown('소속', this)">부서별</button>
-            <button type="button" onclick="setBreakdown('비용대분류', this)">비용분류별</button>
-            <button type="button" onclick="setBreakdown('연도', this)">연도별</button>
-            <button type="button" onclick="setBreakdown('월', this)">월별</button>
-          </div>
-          <div id="criteriaPicker" class="criteria-picker">
-            <div class="criteria-picker-head">
-              <b id="criteriaPickerTitle">사용자 선택 (복수 선택 가능)</b>
-              <button type="button" onclick="clearCurrentCriteria()">현재 항목 해제</button>
-            </div>
-            <div id="criteriaOptions" class="criteria-options"></div>
-          </div>
-          <p id="criteriaSummary" class="criteria-summary">선택된 조회 조건 없음</p>
+          <h3 class="chart-title">사용자별 지출 현황</h3>
           <div id="breakdownChart"></div>
         </div>
         <div id="dashboardReceiptPanel" class="panel" style="overflow:auto">
           <h3 id="dashboardReceiptTitle" class="chart-title">결과 Data</h3>
           <table class="rank-table">
-            <thead><tr><th>구매일시</th><th>사용자</th><th>구매처</th><th>분류</th><th>승인번호</th><th>금액</th></tr></thead>
+            <thead><tr><th>구매일시</th><th>사용자</th><th>구매처</th><th>분류</th><th>승인번호</th><th>금액</th><th>관리</th></tr></thead>
             <tbody id="rankingRows"></tbody>
           </table>
         </div>
@@ -330,22 +403,50 @@
             />
           </div>
           <form class="panel form" onsubmit="save(event)">
-            <label
-              >구매일자<input id="purchaseDate" type="date" required /></label
-            ><label>구매시간<input id="purchaseTime" type="time" /></label
-            ><label
-              >구매자<select
-                id="buyerName"
-                onchange="syncEmp()"
-              ></select></label
-            ><label>사번<input id="employeeId" readonly /></label
-            ><label class="wide">구매처<input id="merchant" required /></label
-            ><label>비용 분류<select id="category"></select></label
-            ><label>세부 분류<input id="subcategory" /></label
-            ><label class="wide">승인번호<input id="approvalNumber" /></label
-            ><label>통화<input id="currencyCode" maxlength="3" value="KRW" required /></label
-            ><label>결제금액<input id="amount" type="number" step="0.01" min="0" required /></label
-            ><button class="primary wide">확인 후 저장</button>
+            <label>
+              구매일자
+              <input id="purchaseDate" type="date" required />
+            </label>
+            <label>
+              구매시간
+              <input id="purchaseTime" type="time" />
+            </label>
+            <label class="wide">
+              구매자
+              <select id="buyerName" onchange="syncEmp()"></select>
+            </label>
+            <input id="employeeId" type="hidden" />
+            <input id="editingReceiptId" type="hidden" />
+            <input id="editingReceiptVersion" type="hidden" />
+            <label class="wide">
+              구매처
+              <input id="merchant" required />
+            </label>
+            <label>
+              비용 분류
+              <select id="category"></select>
+            </label>
+            <label>
+              세부 분류
+              <input id="subcategory" />
+            </label>
+            <label class="wide">
+              승인번호
+              <input id="approvalNumber" />
+            </label>
+            <label>
+              통화
+              <input id="currencyCode" maxlength="3" value="KRW" required />
+            </label>
+            <label>
+              결제금액
+              <input id="amount" type="number" step="0.01" min="0" required />
+            </label>
+            <button id="saveButton" class="primary wide">확인 후 저장</button>
+            <div id="editActions" class="form-actions wide" hidden>
+              <button type="button" class="secondary" onclick="cancelEdit()">수정 취소</button>
+              <button type="button" class="danger" onclick="deleteEditingReceipt()">이 영수증 삭제</button>
+            </div>
           </form>
         </div>
       </section>
@@ -360,6 +461,7 @@
                 <th>분류</th>
                 <th>승인번호</th>
                 <th>금액</th>
+                <th>관리</th>
               </tr>
             </thead>
             <tbody id="rows"></tbody>
@@ -382,14 +484,7 @@
         maximumFractionDigits: ["KRW", "JPY", "VND"].includes(code) ? 0 : 2,
       }) + " " + code;
       const DEPARTMENTS = ["담당", "팀장", "기획", "객실", "정비", "운항관리", "조종", "헬기"];
-      let breakdownKey = "이름";
-      const criteriaSelections = {
-        이름: new Set(),
-        소속: new Set(),
-        비용대분류: new Set(),
-        연도: new Set(),
-        월: new Set(),
-      };
+      const breakdownKey = "이름";
 
       function show(id, b) {
         ["dash", "scan", "list"].forEach((x) => ($(x).hidden = x !== id));
@@ -522,31 +617,24 @@
           .sort((a, b) => a.localeCompare(b, "ko", { numeric: true }));
       }
 
-      function fillFilter(id, values, allLabel) {
+      function fillFilter(id, values, allLabel, selectedValue = "") {
         $(id).innerHTML =
           '<option value="">' + allLabel + "</option>" +
           values.map((v) => '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + "</option>").join("");
+        $(id).value = values.includes(selectedValue) ? selectedValue : "";
       }
 
       function setupDashboardFilters() {
-        const rows = app.receipts || [];
-        fillFilter("filterYear", uniqueValues(rows, "연도").reverse(), "전체 연도");
-        fillFilter("filterMonth", Array.from({ length: 12 }, (_, i) => String(i + 1)), "전체 월");
-        fillFilter("filterEmployee", uniqueValues(rows, "이름"), "전체 사용자");
-        const departments = [...new Set([...DEPARTMENTS, ...uniqueValues(rows, "소속")])];
-        fillFilter("filterDepartment", departments, "전체 소속");
-        fillFilter("filterCategory", app.categories || [], "전체 분류");
-        fillFilter("filterCurrency", [...new Set(["KRW", "USD", "EUR", "JPY", "CNY", ...rows.map(currencyOf)])], "전체 통화");
+        refreshDashboardFilterOptions();
       }
 
       function resetDashboardFilters() {
         ["filterYear", "filterMonth", "filterEmployee", "filterDepartment", "filterCategory", "filterCurrency"]
           .forEach((id) => ($(id).value = ""));
-        Object.values(criteriaSelections).forEach((values) => values.clear());
         applyDashboardFilters();
       }
 
-      function baseFilteredReceipts() {
+      function rowsMatchingTopFilters(excludeId = "") {
         const year = $("filterYear").value;
         const month = $("filterMonth").value;
         const employee = $("filterEmployee").value;
@@ -554,21 +642,43 @@
         const category = $("filterCategory").value;
         const currency = $("filterCurrency").value;
         return (app.receipts || []).filter((r) =>
-          (!year || String(r["연도"]) === year) &&
-          (!month || String(r["월"]) === month) &&
-          (!employee || r["이름"] === employee) &&
-          (!department || r["소속"] === department) &&
-          (!category || r["비용대분류"] === category) &&
-          (!currency || currencyOf(r) === currency)
+          (excludeId === "filterYear" || !year || String(r["연도"]) === year) &&
+          (excludeId === "filterMonth" || !month || String(r["월"]) === month) &&
+          (excludeId === "filterEmployee" || !employee || r["이름"] === employee) &&
+          (excludeId === "filterDepartment" || !department || r["소속"] === department) &&
+          (excludeId === "filterCategory" || !category || r["비용대분류"] === category) &&
+          (excludeId === "filterCurrency" || !currency || currencyOf(r) === currency)
         );
       }
 
       function filteredReceipts() {
-        return baseFilteredReceipts().filter((r) =>
-          Object.entries(criteriaSelections).every(([key, values]) =>
-            !values.size || values.has(String(r[key] || "미분류"))
-          )
-        );
+        return rowsMatchingTopFilters();
+      }
+
+      function refreshDashboardFilterOptions() {
+        const selected = {
+          filterYear: $("filterYear").value,
+          filterMonth: $("filterMonth").value,
+          filterEmployee: $("filterEmployee").value,
+          filterDepartment: $("filterDepartment").value,
+          filterCategory: $("filterCategory").value,
+          filterCurrency: $("filterCurrency").value,
+        };
+        const configs = [
+          ["filterYear", "연도", "전체 연도", true],
+          ["filterMonth", "월", "전체 월", false],
+          ["filterEmployee", "이름", "전체 사용자", false],
+          ["filterDepartment", "소속", "전체 소속", false],
+          ["filterCategory", "비용대분류", "전체 분류", false],
+        ];
+        configs.forEach(([id, key, label, reverse]) => {
+          const values = uniqueValues(rowsMatchingTopFilters(id), key);
+          if (reverse) values.reverse();
+          fillFilter(id, values, label, selected[id]);
+        });
+        const currencies = [...new Set(rowsMatchingTopFilters("filterCurrency").map(currencyOf))]
+          .sort((a, b) => a.localeCompare(b));
+        fillFilter("filterCurrency", currencies, "전체 통화", selected.filterCurrency);
       }
 
       function groupAmounts(rows, key) {
@@ -577,54 +687,6 @@
           group[name] = (group[name] || 0) + Number(row["결제금액"] || 0);
           return group;
         }, {})).sort((a, b) => b[1] - a[1]);
-      }
-
-      function setBreakdown(key, button) {
-        breakdownKey = key;
-        document.querySelectorAll(".breakdown-tabs button").forEach((x) => x.classList.remove("on"));
-        button.classList.add("on");
-        renderCriteriaPicker();
-        applyDashboardFilters();
-      }
-
-      function criterionTitle(key) {
-        return ({ 이름: "사용자", 소속: "부서", 비용대분류: "비용분류", 연도: "연도", 월: "월" })[key];
-      }
-
-      function renderCriteriaPicker() {
-        const values = uniqueValues(baseFilteredReceipts(), breakdownKey);
-        const selected = criteriaSelections[breakdownKey];
-        $("criteriaPickerTitle").textContent = criterionTitle(breakdownKey) + " 선택 (복수 선택 가능)";
-        $("criteriaOptions").innerHTML = values.length
-          ? values.map((value) =>
-              '<label><input type="checkbox" value="' + escapeHtml(value) + '"' +
-              (selected.has(value) ? " checked" : "") + ">" +
-              escapeHtml(breakdownLabel(breakdownKey, value)) + "</label>"
-            ).join("")
-          : '<span class="empty">선택 가능한 데이터가 없습니다.</span>';
-        $("criteriaOptions").querySelectorAll('input[type="checkbox"]').forEach((input) => {
-          input.addEventListener("change", () => {
-            if (input.checked) selected.add(input.value);
-            else selected.delete(input.value);
-            applyDashboardFilters();
-          });
-        });
-      }
-
-      function clearCurrentCriteria() {
-        criteriaSelections[breakdownKey].clear();
-        renderCriteriaPicker();
-        applyDashboardFilters();
-      }
-
-      function renderCriteriaSummary() {
-        const parts = Object.entries(criteriaSelections)
-          .filter(([, values]) => values.size)
-          .map(([key, values]) => criterionTitle(key) + ": " +
-            [...values].map((value) => breakdownLabel(key, value)).join(", "));
-        $("criteriaSummary").textContent = parts.length
-          ? "적용 중 · " + parts.join(" / ")
-          : "선택된 조회 조건 없음";
       }
 
       function breakdownLabel(key, value) {
@@ -662,10 +724,7 @@
       }
 
       function showBreakdownDetail(value) {
-        const selected = criteriaSelections[breakdownKey];
-        if (selected.has(value)) selected.delete(value);
-        else selected.add(value);
-        renderCriteriaPicker();
+        $("filterEmployee").value = value;
         applyDashboardFilters();
       }
 
@@ -686,9 +745,84 @@
               "</td><td>" + escapeHtml(r["이름"]) + "<br>" + escapeHtml(r["사번"]) +
               "</td><td>" + escapeHtml(r["구매처"]) + "</td><td>" + escapeHtml(r["비용대분류"]) +
               "</td><td>" + escapeHtml(r["승인번호"]) + "</td><td><b>" +
-              money(r["결제금액"], currencyOf(r)) + "</b></td></tr>"
+              money(r["결제금액"], currencyOf(r)) + "</b></td><td>" +
+              receiptActionButtons(r) + "</td></tr>"
             ).join("")
-          : '<tr><td colspan="6" class="empty">조건에 해당하는 데이터가 없습니다.</td></tr>';
+          : '<tr><td colspan="7" class="empty">조건에 해당하는 데이터가 없습니다.</td></tr>';
+      }
+
+      function receiptActionButtons(r) {
+        const id = escapeHtml(r["영수증ID"]);
+        return '<div class="row-actions"><button type="button" class="table-action" onclick="editReceipt(\'' +
+          id + '\')">수정</button><button type="button" class="danger" onclick="deleteReceiptById(\'' +
+          id + '\')">삭제</button></div>';
+      }
+
+      function receiptById(receiptId) {
+        return (app.receipts || []).find((r) => String(r["영수증ID"]) === String(receiptId));
+      }
+
+      function editReceipt(receiptId) {
+        const r = receiptById(receiptId);
+        if (!r) {
+          alert("영수증 정보를 찾을 수 없습니다. 화면을 새로고침해 주세요.");
+          return;
+        }
+        $("editingReceiptId").value = r["영수증ID"] || "";
+        $("editingReceiptVersion").value = r._version || "";
+        $("purchaseDate").value = r["구매일자"] || "";
+        $("purchaseTime").value = r["구매시간"] || "";
+        $("buyerName").value = r["이름"] || "";
+        syncEmp();
+        $("merchant").value = r["구매처"] || "";
+        $("category").value = r["비용대분류"] || "";
+        $("subcategory").value = r["세부분류"] || "";
+        $("approvalNumber").value = r["승인번호"] || "";
+        $("currencyCode").value = currencyOf(r);
+        $("amount").value = r["결제금액"] || "";
+        $("saveButton").textContent = "수정 내용 저장";
+        $("editActions").hidden = false;
+        $("photo").innerHTML = '<h2>✎</h2><b>영수증 수정 중</b><p>필요한 항목을 고친 뒤 저장하세요.</p>';
+        show("scan", $("tabScan"));
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      function cancelEdit() {
+        $("editingReceiptId").value = "";
+        $("editingReceiptVersion").value = "";
+        document.querySelector("#scan form").reset();
+        $("buyerName").value = "";
+        $("employeeId").value = "";
+        $("currencyCode").value = "KRW";
+        $("saveButton").textContent = "확인 후 저장";
+        $("editActions").hidden = true;
+        $("photo").innerHTML = '<h2>⌁</h2><b>영수증 촬영</b><p>눌러서 카메라를 실행하세요.</p>';
+        image = "";
+      }
+
+      async function deleteReceiptById(receiptId) {
+        const r = receiptById(receiptId);
+        if (!r) {
+          alert("영수증 정보를 찾을 수 없습니다. 화면을 새로고침해 주세요.");
+          return;
+        }
+        const description = (r["구매일자"] || "") + " / " + (r["구매처"] || "") +
+          " / " + money(r["결제금액"], currencyOf(r));
+        if (!confirm(description + "\n\n이 영수증을 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.")) return;
+        try {
+          await postJob("delete", {
+            payload: JSON.stringify({ receiptId: r["영수증ID"], version: r._version }),
+          });
+          alert("삭제했습니다.");
+          location.reload();
+        } catch (err) {
+          alert(err.message);
+        }
+      }
+
+      function deleteEditingReceipt() {
+        const receiptId = $("editingReceiptId").value;
+        if (receiptId) deleteReceiptById(receiptId);
       }
 
       function drawBars(id, entries, colorClass = "", limit = 12) {
@@ -707,6 +841,7 @@
       }
 
       function applyDashboardFilters() {
+        refreshDashboardFilterOptions();
         const rows = filteredReceipts();
         const totals = rows.reduce((o, r) => {
           const code = currencyOf(r);
@@ -717,8 +852,6 @@
           ? Object.entries(totals).map(([code, value]) => money(value, code)).join("<br>")
           : "0 KRW";
         $("count").textContent = rows.length + "건";
-        renderCriteriaPicker();
-        renderCriteriaSummary();
         renderBreakdown(rows);
         renderDashboardReceiptTable(rows, "결과 Data");
       }
@@ -744,6 +877,8 @@
               r["승인번호"] +
               "</td><td>" +
               money(r["결제금액"], currencyOf(r)) +
+              "</td><td>" +
+              receiptActionButtons(r) +
               "</td></tr>",
           )
           .join("");
@@ -863,12 +998,17 @@
           "currencyCode",
           "amount",
         ].forEach((k) => (x[k] = $(k).value));
+        const editingId = $("editingReceiptId").value;
+        if (editingId) {
+          x.receiptId = editingId;
+          x.version = $("editingReceiptVersion").value;
+        }
 
         try {
-          await postJob("save", {
+          await postJob(editingId ? "update" : "save", {
             payload: JSON.stringify(x),
           });
-          alert("저장했습니다.");
+          alert(editingId ? "수정 내용을 저장했습니다." : "저장했습니다.");
           location.reload();
         } catch (err) {
           alert(err.message);
