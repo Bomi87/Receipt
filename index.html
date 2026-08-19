@@ -143,6 +143,26 @@
       .chart-title {
         margin: 0 0 16px;
       }
+      .breakdown-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .breakdown-head .chart-title {
+        margin: 0;
+      }
+      .breakdown-select {
+        min-width: 150px;
+        height: 40px;
+        border: 1px solid #d7e0e8;
+        border-radius: 8px;
+        background: #fff;
+        padding: 0 10px;
+        font-size: 16px;
+        color: #18293b;
+      }
       .result-head {
         display: flex;
         justify-content: space-between;
@@ -484,7 +504,17 @@
           <article class="panel">등록 영수증<b id="count">0건</b></article>
         </div>
         <div class="panel">
-          <h3 class="chart-title">사용자별 지출 현황</h3>
+          <div class="breakdown-head">
+            <h3 class="chart-title">지출 현황</h3>
+            <select id="breakdownSelect" class="breakdown-select" onchange="changeBreakdownKey()">
+              <option value="이름">사용자별</option>
+              <option value="소속">소속별</option>
+              <option value="비용대분류">비용분류별</option>
+              <option value="통화">통화별</option>
+              <option value="연도">연도별</option>
+              <option value="월">월별</option>
+            </select>
+          </div>
           <div id="breakdownChart"></div>
         </div>
         <div id="dashboardReceiptPanel" class="panel" style="overflow:auto">
@@ -577,7 +607,7 @@
         maximumFractionDigits: ["KRW", "JPY", "VND"].includes(code) ? 0 : 2,
       }) + " " + code;
       const DEPARTMENTS = ["담당", "팀장", "기획", "객실", "정비", "운항관리", "조종", "헬기"];
-      const breakdownKey = "이름";
+      let breakdownKey = "이름";
 
       function show(id, b) {
         ["dash", "scan"].forEach((x) => ($(x).hidden = x !== id));
@@ -915,6 +945,11 @@
         });
       }
 
+      function changeBreakdownKey() {
+        breakdownKey = $("breakdownSelect").value || "이름";
+        applyDashboardFilters();
+      }
+
       async function jsonp(action, params = {}) {
         let lastError;
         for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -930,7 +965,16 @@
       }
 
       function showBreakdownDetail(value) {
-        $("filterEmployee").value = value;
+        const filterByKey = {
+          "이름": "filterEmployee",
+          "소속": "filterDepartment",
+          "비용대분류": "filterCategory",
+          "통화": "filterCurrency",
+          "연도": "filterYear",
+          "월": "filterMonth",
+        };
+        const filterId = filterByKey[breakdownKey];
+        if (filterId) $(filterId).value = value;
         applyDashboardFilters();
       }
 
