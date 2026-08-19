@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>영수증 비용관리</title>
+    <style>
+      body {
+        font-family: Arial;
+        margin: 0;
+        background: #f4f7fa;
+        color: #18293b;
+      }
+      header {
+        background: #14263c;
+        color: #fff;
+        padding: 18px;
+      }
+      main {
+        max-width: 1050px;
+        margin: auto;
+        padding: 18px;
+      }
+      .tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 15px;
+      }
+      .tabs button,
+      .primary {
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 14px;
+      }
+      .primary,
+      .tabs .on {
+        background: #2676ed;
+        color: #fff;
+      }
+      .panel {
+        background: #fff;
+        border: 1px solid #e1e7ed;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 14px;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+      .cards b {
+        display: block;
+        font-size: 22px;
+        margin-top: 9px;
+      }
+      .scan {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .drop {
+        min-height: 420px;
+        border: 2px dashed #becbd7;
+        display: grid;
+        place-content: center;
+        text-align: center;
+      }
+      .drop img {
+        max-width: 100%;
+        max-height: 390px;
+      }
+      .form {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 11px;
+      }
+      .form label {
+        font-size: 12px;
+      }
+      .form input,
+      .form select {
+        width: 100%;
+        height: 39px;
+        margin-top: 5px;
+        border: 1px solid #d7e0e8;
+        border-radius: 7px;
+        padding: 7px;
+      }
+      .wide {
+        grid-column: 1/-1;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      th,
+      td {
+        padding: 10px;
+        border-bottom: 1px solid #edf0f3;
+        text-align: left;
+      }
+      @media (max-width: 700px) {
+        .cards {
+          grid-template-columns: 1fr 1fr;
+        }
+        .scan {
+          grid-template-columns: 1fr;
+        }
+        .drop {
+          min-height: 300px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header><b>Receipt Flow</b>　영수증 비용관리</header>
+    <main>
+      <div class="tabs">
+        <button onclick="show('dash', this)" class="on">대시보드</button
+        ><button onclick="show('scan', this)">영수증 스캔</button
+        ><button onclick="show('list', this)">영수증 내역</button>
+      </div>
+      <section id="dash">
+        <div class="cards">
+          <article class="panel">총 결제금액<b id="total">0원</b></article>
+          <article class="panel">등록 영수증<b id="count">0건</b></article>
+          <article class="panel">평균 결제액<b id="avg">0원</b></article>
+          <article class="panel">확인 필요<b id="pending">0건</b></article>
+        </div>
+        <div class="panel">
+          <h3>사용자별 지출</h3>
+          <div id="users"></div>
+        </div>
+      </section>
+      <section id="scan" hidden>
+        <div class="scan">
+          <div class="panel drop" onclick="file.click()">
+            <div id="photo">
+              <h2>⌁</h2>
+              <b>영수증 촬영</b>
+              <p>눌러서 카메라를 실행하세요.</p>
+            </div>
+            <input
+              id="file"
+              hidden
+              type="file"
+              accept="image/*"
+              capture="environment"
+            />
+          </div>
+          <form class="panel form" onsubmit="save(event)">
+            <label
+              >구매일자<input id="purchaseDate" type="date" required /></label
+            ><label>구매시간<input id="purchaseTime" type="time" /></label
+            ><label
+              >구매자<select
+                id="buyerName"
+                onchange="syncEmp()"
+              ></select></label
+            ><label>사번<input id="employeeId" readonly /></label
+            ><label class="wide">구매처<input id="merchant" required /></label
+            ><label>비용 분류<select id="category"></select></label
+            ><label>세부 분류<input id="subcategory" /></label
+            ><label class="wide">승인번호<input id="approvalNumber" /></label
+            ><label class="wide"
+              >결제금액<input id="amount" type="number" required /></label
+            ><button class="primary wide">확인 후 저장</button>
+          </form>
+        </div>
+      </section>
+      <section id="list" hidden>
+        <div class="panel" style="overflow: auto">
+          <table>
+            <thead>
+              <tr>
+                <th>구매일시</th>
+                <th>사용자</th>
+                <th>구매처</th>
+                <th>분류</th>
+                <th>승인번호</th>
+                <th>금액</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script>
+      // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
+      const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
+
+      // 백엔드 스크립트 속성 APP_API_TOKEN을 사용하지 않으면 빈칸으로 둡니다.
+      const API_TOKEN = "";
+
+      let app = {};
+      let image = "";
+
+      const $ = (id) => document.getElementById(id);
+      const won = (n) => Number(n || 0).toLocaleString() + "원";
+
+      function show(id, b) {
+        ["dash", "scan", "list"].forEach((x) => ($(x).hidden = x !== id));
+        document
+          .querySelectorAll(".tabs button")
+          .forEach((x) => x.classList.remove("on"));
+        b.classList.add("on");
+      }
+      function checkBackendUrl() {
+        if (!BACKEND_URL.startsWith("https://script.google.com/macros/s/")) {
+          throw new Error(
+            "프론트 코드 상단의 BACKEND_URL에 Apps Script /exec 주소를 입력하세요.",
+          );
+        }
+      }
+
+      function jsonp(action, params = {}) {
+        checkBackendUrl();
+        return new Promise((resolve, reject) => {
+          const callbackName =
+            "receiptCallback_" +
+            Date.now() +
+            "_" +
+            Math.random().toString(36).slice(2);
+          const script = document.createElement("script");
+          const timeout = setTimeout(() => {
+            cleanup();
+            reject(new Error("백엔드 응답 시간이 초과되었습니다."));
+          }, 30000);
+
+          function cleanup() {
+            clearTimeout(timeout);
+            delete window[callbackName];
+            script.remove();
+          }
+
+          window[callbackName] = (response) => {
+            cleanup();
+            response.ok
+              ? resolve(response)
+              : reject(new Error(response.error || "요청에 실패했습니다."));
+          };
+
+          const query = new URLSearchParams({
+            action,
+            token: API_TOKEN,
+            callback: callbackName,
+            ...params,
+          });
+          script.onerror = () => {
+            cleanup();
+            reject(new Error("백엔드에 연결할 수 없습니다."));
+          };
+          script.src = BACKEND_URL + "?" + query.toString();
+          document.head.appendChild(script);
+        });
+      }
+
+      async function postJob(action, values) {
+        checkBackendUrl();
+        const requestId =
+          Date.now().toString(36) + Math.random().toString(36).slice(2);
+        const body = new URLSearchParams({
+          action,
+          requestId,
+          token: API_TOKEN,
+          ...values,
+        });
+
+        fetch(BACKEND_URL, {
+          method: "POST",
+          mode: "no-cors",
+          body,
+        }).catch(() => {});
+
+        for (let i = 0; i < 90; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          const result = await jsonp("status", { requestId });
+          if (result.state === "done") return result.data;
+          if (result.state === "error") {
+            throw new Error(result.error || "처리 중 오류가 발생했습니다.");
+          }
+        }
+        throw new Error("처리 시간이 초과되었습니다. 다시 시도해 주세요.");
+      }
+
+      async function init() {
+        try {
+          const response = await jsonp("initial");
+          const d = response.data;
+          app = d;
+          $("buyerName").innerHTML = d.employees
+            .map(
+              (e) =>
+                '<option value="' +
+                e.name +
+                '">' +
+                e.name +
+                " / " +
+                e.employeeId +
+                " / " +
+                e.department +
+                "</option>",
+            )
+            .join("");
+          $("category").innerHTML = d.categories
+            .map((x) => "<option>" + x + "</option>")
+            .join("");
+          syncEmp();
+          render(d);
+        } catch (err) {
+          alert(err.message);
+        }
+      }
+
+      function syncEmp() {
+        let e = app.employees?.find((x) => x.name == $("buyerName").value);
+        if (e) $("employeeId").value = e.employeeId;
+      }
+      function render(d) {
+        $("total").textContent = won(d.summary.total);
+        $("count").textContent = d.summary.count + "건";
+        $("avg").textContent = won(d.summary.average);
+        $("pending").textContent =
+          d.receipts.filter((r) => r["확인상태"] == "확인필요").length + "건";
+        $("users").innerHTML = Object.entries(d.summary.byUser)
+          .map(([k, v]) => "<p>" + k + "　<b>" + won(v) + "</b></p>")
+          .join("");
+        $("rows").innerHTML = d.receipts
+          .map(
+            (r) =>
+              "<tr><td>" +
+              r["구매일자"] +
+              " " +
+              r["구매시간"] +
+              "</td><td>" +
+              r["이름"] +
+              "<br>" +
+              r["사번"] +
+              "</td><td>" +
+              r["구매처"] +
+              "</td><td>" +
+              r["비용대분류"] +
+              "</td><td>" +
+              r["승인번호"] +
+              "</td><td>" +
+              won(r["결제금액"]) +
+              "</td></tr>",
+          )
+          .join("");
+      }
+      async function compressImage(file) {
+        const source = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const img = await new Promise((resolve, reject) => {
+          const element = new Image();
+          element.onload = () => resolve(element);
+          element.onerror = reject;
+          element.src = source;
+        });
+        const maxSize = 1800;
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas
+          .getContext("2d")
+          .drawImage(img, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL("image/jpeg", 0.82);
+      }
+
+      file.onchange = async (e) => {
+        const selectedFile = e.target.files[0];
+        if (!selectedFile) return;
+        try {
+          image = await compressImage(selectedFile);
+          photo.innerHTML = '<img src="' + image + '"><p>AI 분석 중…</p>';
+          const x = await postJob("analyze", { image });
+          Object.entries(x).forEach(([k, v]) => {
+            if ($(k) && v !== undefined) $(k).value = v;
+          });
+          syncEmp();
+          photo.querySelector("p").textContent = "분석 완료";
+        } catch (err) {
+          photo.querySelector("p").textContent = "분석 실패";
+          alert(err.message);
+        }
+      };
+
+      async function save(e) {
+        e.preventDefault();
+        const x = {};
+        [
+          "purchaseDate",
+          "purchaseTime",
+          "buyerName",
+          "employeeId",
+          "merchant",
+          "category",
+          "subcategory",
+          "approvalNumber",
+          "amount",
+        ].forEach((k) => (x[k] = $(k).value));
+
+        try {
+          await postJob("save", {
+            payload: JSON.stringify(x),
+            image,
+          });
+          alert("저장했습니다.");
+          location.reload();
+        } catch (err) {
+          alert(err.message);
+        }
+      }
+
+      init();
+    </script>
+  </body>
+</html>
