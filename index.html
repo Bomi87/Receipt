@@ -50,6 +50,18 @@
         gap: 8px;
         margin-bottom: 15px;
       }
+      .refresh-button {
+        margin-left: auto;
+        border: 1px solid #c8d5e3 !important;
+        background: #fff;
+        color: #36506b;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .refresh-button:disabled {
+        opacity: 0.65;
+        cursor: wait;
+      }
       .tabs button,
       .primary {
         border: 0;
@@ -423,6 +435,7 @@
       <div class="tabs">
         <button id="tabDash" onclick="show('dash', this)" class="on">대시보드</button
         ><button id="tabScan" onclick="openNewScan(this)">영수증 스캔</button>
+        <button id="refreshButton" type="button" class="refresh-button" onclick="refreshDashboardData()">↻ 새로고침</button>
       </div>
       <section id="dash" hidden>
         <div class="panel filters">
@@ -782,6 +795,34 @@
           applyDashboardFilters();
         } catch (err) {
           console.warn("환율 갱신 실패:", err.message);
+        }
+      }
+
+      async function refreshDashboardData() {
+        const button = $("refreshButton");
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.textContent = "갱신 중…";
+        try {
+          const response = await jsonp("initial");
+          const d = response.data;
+          app = {
+            ...app,
+            ...d,
+            exchangeRates: app.exchangeRates || d.exchangeRates || {},
+          };
+          setupDashboardFilters();
+          render(app);
+          button.textContent = "✓ 갱신 완료";
+          loadExchangeRates();
+          setTimeout(() => {
+            button.textContent = originalText;
+          }, 1200);
+        } catch (err) {
+          button.textContent = originalText;
+          alert(err.message);
+        } finally {
+          button.disabled = false;
         }
       }
 
