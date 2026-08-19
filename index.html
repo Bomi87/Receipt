@@ -405,7 +405,7 @@
         ><button id="tabScan" onclick="openNewScan(this)">영수증 스캔</button
         ><button id="tabList" onclick="show('list', this)">영수증 내역</button>
       </div>
-      <section id="dash">
+      <section id="dash" hidden>
         <div class="panel filters">
           <label>연도<select id="filterYear" onchange="applyDashboardFilters()"></select></label>
           <label>월<select id="filterMonth" onchange="applyDashboardFilters()"></select></label>
@@ -657,7 +657,6 @@
           $("buyerName").value = "";
           $("employeeId").value = "";
           render(d);
-          restoreActiveTab();
         } catch (err) {
           alert(err.message);
         }
@@ -1071,6 +1070,7 @@
         }
       }
 
+      restoreActiveTab();
       init();
     </script>
   </body>
