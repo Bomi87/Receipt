@@ -123,6 +123,18 @@
         background: #2676ed;
         color: #fff;
       }
+      .filters .reset-filter-button {
+        border-color: #7456d8;
+        background: #7456d8;
+        color: #fff;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .filters .reset-filter-button:active {
+        border-color: #5638b9;
+        background: #5638b9;
+        color: #fff;
+      }
       .dashboard-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -465,7 +477,7 @@
           <label>소속<select id="filterDepartment" onchange="applyDashboardFilters()"></select></label>
           <label>비용분류<select id="filterCategory" onchange="applyDashboardFilters()"></select></label>
           <label>통화<select id="filterCurrency" onchange="applyDashboardFilters()"></select></label>
-          <button type="button" onclick="resetDashboardFilters()">필터 초기화</button>
+          <button type="button" class="reset-filter-button" onclick="resetDashboardFilters()">필터 초기화</button>
         </div>
         <div class="cards">
           <article class="panel"><span id="totalTitle">총 결제금액</span><b id="total">0원</b></article>
