@@ -271,7 +271,7 @@
         }).catch(() => {});
 
         for (let i = 0; i < 90; i += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1500));
+          await new Promise((resolve) => setTimeout(resolve, 700));
           const result = await jsonp("status", { requestId });
           if (result.state === "done") return result.data;
           if (result.state === "error") {
