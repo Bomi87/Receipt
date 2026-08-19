@@ -45,13 +45,113 @@
       }
       .cards {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(2, 1fr);
         gap: 12px;
       }
       .cards b {
         display: block;
         font-size: 22px;
         margin-top: 9px;
+      }
+      .filters {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(110px, 1fr));
+        gap: 10px;
+        align-items: end;
+      }
+      .filters label {
+        font-size: 12px;
+        color: #607286;
+      }
+      .filters select,
+      .filters button {
+        width: 100%;
+        height: 40px;
+        margin-top: 5px;
+        border: 1px solid #d7e0e8;
+        border-radius: 8px;
+        background: #fff;
+        padding: 0 9px;
+      }
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .chart-title {
+        margin: 0 0 16px;
+      }
+      .bar-row {
+        display: grid;
+        grid-template-columns: minmax(80px, 130px) 1fr auto;
+        gap: 10px;
+        align-items: center;
+        margin: 11px 0;
+        font-size: 13px;
+      }
+      .bar-track {
+        height: 16px;
+        background: #edf2f7;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .bar-fill {
+        height: 100%;
+        min-width: 3px;
+        border-radius: 8px;
+        background: linear-gradient(90deg, #2676ed, #61a0ff);
+      }
+      .bar-fill.green {
+        background: linear-gradient(90deg, #12a06a, #58c99d);
+      }
+      .bar-fill.orange {
+        background: linear-gradient(90deg, #ef8a27, #ffc15c);
+      }
+      .empty {
+        padding: 28px 0;
+        text-align: center;
+        color: #8291a1;
+      }
+      .rank-table td:last-child,
+      .rank-table th:last-child {
+        text-align: right;
+      }
+      .breakdown-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 18px;
+      }
+      .breakdown-tabs button {
+        border: 1px solid #d7e0e8;
+        border-radius: 20px;
+        background: #fff;
+        padding: 9px 15px;
+        color: #36506b;
+      }
+      .breakdown-tabs button.on {
+        border-color: #2676ed;
+        background: #2676ed;
+        color: #fff;
+      }
+      .clickable {
+        cursor: pointer;
+        padding: 5px;
+        border-radius: 7px;
+      }
+      .clickable:hover {
+        background: #f4f7fa;
+      }
+      .detail-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+      .detail-head button {
+        border: 0;
+        border-radius: 7px;
+        padding: 8px 11px;
       }
       .scan {
         display: grid;
@@ -110,6 +210,15 @@
         .drop {
           min-height: 300px;
         }
+        .filters {
+          grid-template-columns: 1fr 1fr;
+        }
+        .dashboard-grid {
+          grid-template-columns: 1fr;
+        }
+        .bar-row {
+          grid-template-columns: 80px 1fr auto;
+        }
       }
     </style>
   </head>
@@ -122,15 +231,48 @@
         ><button onclick="show('list', this)">영수증 내역</button>
       </div>
       <section id="dash">
+        <div class="panel filters">
+          <label>연도<select id="filterYear" onchange="applyDashboardFilters()"></select></label>
+          <label>월<select id="filterMonth" onchange="applyDashboardFilters()"></select></label>
+          <label>사용자<select id="filterEmployee" onchange="applyDashboardFilters()"></select></label>
+          <label>소속<select id="filterDepartment" onchange="applyDashboardFilters()"></select></label>
+          <label>비용분류<select id="filterCategory" onchange="applyDashboardFilters()"></select></label>
+          <label>통화<select id="filterCurrency" onchange="applyDashboardFilters()"></select></label>
+          <button type="button" onclick="resetDashboardFilters()">필터 초기화</button>
+        </div>
         <div class="cards">
           <article class="panel">총 결제금액<b id="total">0원</b></article>
           <article class="panel">등록 영수증<b id="count">0건</b></article>
-          <article class="panel">평균 결제액<b id="avg">0원</b></article>
-          <article class="panel">확인 필요<b id="pending">0건</b></article>
         </div>
         <div class="panel">
-          <h3>사용자별 지출</h3>
-          <div id="users"></div>
+          <h3 class="chart-title">통계 조회 기준</h3>
+          <div class="breakdown-tabs">
+            <button type="button" class="on" onclick="setBreakdown('이름', this)">사용자별</button>
+            <button type="button" onclick="setBreakdown('소속', this)">부서별</button>
+            <button type="button" onclick="setBreakdown('비용대분류', this)">비용분류별</button>
+            <button type="button" onclick="setBreakdown('연도', this)">연도별</button>
+            <button type="button" onclick="setBreakdown('월', this)">월별</button>
+          </div>
+          <div id="breakdownChart"></div>
+        </div>
+        <div id="breakdownDetail" class="panel" hidden>
+          <div class="detail-head">
+            <h3 id="breakdownDetailTitle" class="chart-title"></h3>
+            <button type="button" onclick="closeBreakdownDetail()">닫기</button>
+          </div>
+          <div style="overflow:auto">
+            <table class="rank-table">
+              <thead><tr><th>구매일시</th><th>사용자</th><th>소속</th><th>구매처</th><th>분류</th><th>승인번호</th><th>금액</th></tr></thead>
+              <tbody id="breakdownDetailRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel" style="overflow:auto">
+          <h3 class="chart-title">영수증 금액 순위</h3>
+          <table class="rank-table">
+            <thead><tr><th>순위</th><th>구매일자</th><th>사용자</th><th>소속</th><th>구매처</th><th>분류</th><th>금액</th></tr></thead>
+            <tbody id="rankingRows"></tbody>
+          </table>
         </div>
       </section>
       <section id="scan" hidden>
@@ -163,8 +305,10 @@
             ><label>비용 분류<select id="category"></select></label
             ><label>세부 분류<input id="subcategory" /></label
             ><label class="wide">승인번호<input id="approvalNumber" /></label
-            ><label class="wide"
-              >결제금액<input id="amount" type="number" required /></label
+            ><label>통화<input id="currencyCode" list="currencyCodes" maxlength="3" value="KRW" required />
+              <datalist id="currencyCodes"><option value="KRW"><option value="USD"><option value="EUR"><option value="JPY"><option value="CNY"><option value="GBP"><option value="CHF"><option value="CAD"><option value="AUD"><option value="SGD"><option value="HKD"><option value="THB"><option value="TWD"><option value="VND"><option value="AED"></datalist>
+            </label
+            ><label>결제금액<input id="amount" type="number" step="0.01" min="0" required /></label
             ><button class="primary wide">확인 후 저장</button>
           </form>
         </div>
@@ -196,7 +340,18 @@
       let image = "";
 
       const $ = (id) => document.getElementById(id);
-      const won = (n) => Number(n || 0).toLocaleString() + "원";
+      const currencyOf = (r) => String(r["통화"] || "KRW").toUpperCase();
+      const money = (n, currency = "KRW") => {
+        const code = String(currency || "KRW").toUpperCase();
+        const digits = ["KRW", "JPY", "VND"].includes(code) ? 0 : 2;
+        return Number(n || 0).toLocaleString("ko-KR", {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: digits,
+        }) + " " + code;
+      };
+      const won = (n) => money(n, "KRW");
+      const DEPARTMENTS = ["담당", "팀장", "기획", "객실", "정비", "운항관리", "조종", "헬기"];
+      let breakdownKey = "이름";
 
       function show(id, b) {
         ["dash", "scan", "list"].forEach((x) => ($(x).hidden = x !== id));
@@ -271,7 +426,7 @@
         }).catch(() => {});
 
         for (let i = 0; i < 90; i += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 700));
+          await new Promise((resolve) => setTimeout(resolve, 1500));
           const result = await jsonp("status", { requestId });
           if (result.state === "done") return result.data;
           if (result.state === "error") {
@@ -303,6 +458,7 @@
           $("category").innerHTML = d.categories
             .map((x) => "<option>" + x + "</option>")
             .join("");
+          setupDashboardFilters();
           syncEmp();
           render(d);
         } catch (err) {
@@ -314,16 +470,181 @@
         let e = app.employees?.find((x) => x.name == $("buyerName").value);
         if (e) $("employeeId").value = e.employeeId;
       }
+      const escapeHtml = (value) =>
+        String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+
+      function uniqueValues(rows, key) {
+        return [...new Set(rows.map((r) => String(r[key] || "")).filter(Boolean))]
+          .sort((a, b) => a.localeCompare(b, "ko", { numeric: true }));
+      }
+
+      function fillFilter(id, values, allLabel) {
+        $(id).innerHTML =
+          '<option value="">' + allLabel + "</option>" +
+          values.map((v) => '<option value="' + escapeHtml(v) + '">' + escapeHtml(v) + "</option>").join("");
+      }
+
+      function setupDashboardFilters() {
+        const rows = app.receipts || [];
+        fillFilter("filterYear", uniqueValues(rows, "연도").reverse(), "전체 연도");
+        fillFilter("filterMonth", Array.from({ length: 12 }, (_, i) => String(i + 1)), "전체 월");
+        fillFilter("filterEmployee", uniqueValues(rows, "이름"), "전체 사용자");
+        const departments = [...new Set([...DEPARTMENTS, ...uniqueValues(rows, "소속")])];
+        fillFilter("filterDepartment", departments, "전체 소속");
+        fillFilter("filterCategory", app.categories || [], "전체 분류");
+        const currencies = [...new Set(["KRW", "USD", "EUR", "JPY", "CNY", ...rows.map(currencyOf)])];
+        fillFilter("filterCurrency", currencies, "전체 통화");
+      }
+
+      function resetDashboardFilters() {
+        ["filterYear", "filterMonth", "filterEmployee", "filterDepartment", "filterCategory", "filterCurrency"]
+          .forEach((id) => ($(id).value = ""));
+        applyDashboardFilters();
+      }
+
+      function filteredReceipts() {
+        const year = $("filterYear").value;
+        const month = $("filterMonth").value;
+        const employee = $("filterEmployee").value;
+        const department = $("filterDepartment").value;
+        const category = $("filterCategory").value;
+        const currency = $("filterCurrency").value;
+        return (app.receipts || []).filter((r) =>
+          (!year || String(r["연도"]) === year) &&
+          (!month || String(r["월"]) === month) &&
+          (!employee || r["이름"] === employee) &&
+          (!department || r["소속"] === department) &&
+          (!category || r["비용대분류"] === category) &&
+          (!currency || currencyOf(r) === currency)
+        );
+      }
+
+      function groupAmounts(rows, key) {
+        return Object.entries(rows.reduce((group, row) => {
+          const name = String(row[key] || "미분류");
+          group[name] = (group[name] || 0) + Number(row["결제금액"] || 0);
+          return group;
+        }, {})).sort((a, b) => b[1] - a[1]);
+      }
+
+      function setBreakdown(key, button) {
+        breakdownKey = key;
+        document.querySelectorAll(".breakdown-tabs button").forEach((x) => x.classList.remove("on"));
+        button.classList.add("on");
+        closeBreakdownDetail();
+        renderBreakdown(filteredReceipts());
+      }
+
+      function breakdownLabel(key, value) {
+        if (key === "연도") return value + "년";
+        if (key === "월") return value + "월";
+        return value;
+      }
+
+      function renderBreakdown(rows) {
+        const currencies = [...new Set(rows.map(currencyOf))];
+        if (currencies.length > 1) {
+          $("breakdownChart").innerHTML =
+            '<div class="empty">서로 다른 통화는 금액을 직접 비교할 수 없습니다.<br>위의 통화 필터에서 한 통화를 선택하세요.</div>';
+          return;
+        }
+        const currency = currencies[0] || $("filterCurrency").value || "KRW";
+        let entries = groupAmounts(rows, breakdownKey);
+        if (breakdownKey === "연도" || breakdownKey === "월") {
+          entries.sort((a, b) => Number(a[0]) - Number(b[0]));
+        }
+        if (!entries.length) {
+          $("breakdownChart").innerHTML = '<div class="empty">조건에 해당하는 데이터가 없습니다.</div>';
+          return;
+        }
+        const max = Math.max(...entries.map((x) => Number(x[1]) || 0), 1);
+        $("breakdownChart").innerHTML = entries.map(([value, amount]) => {
+          const count = rows.filter((r) => String(r[breakdownKey] || "미분류") === String(value)).length;
+          return '<div class="bar-row clickable" data-value="' + escapeHtml(value) + '"><span>' +
+            escapeHtml(breakdownLabel(breakdownKey, value)) + ' <small>(' + count + '건)</small></span>' +
+            '<div class="bar-track"><div class="bar-fill" style="width:' +
+            Math.max(2, Math.round(Number(amount) / max * 100)) + '%"></div></div><b>' + money(amount, currency) + "</b></div>";
+        }).join("");
+        $("breakdownChart").querySelectorAll(".clickable").forEach((row) => {
+          row.addEventListener("click", () => showBreakdownDetail(row.dataset.value));
+        });
+      }
+
+      function showBreakdownDetail(value) {
+        const rows = filteredReceipts()
+          .filter((r) => String(r[breakdownKey] || "미분류") === String(value))
+          .sort((a, b) => Number(b["결제금액"] || 0) - Number(a["결제금액"] || 0));
+        const titleMap = {
+          이름: "사용자",
+          소속: "부서",
+          비용대분류: "비용분류",
+          연도: "연도",
+          월: "월",
+        };
+        $("breakdownDetailTitle").textContent =
+          titleMap[breakdownKey] + " · " + breakdownLabel(breakdownKey, value) + " 영수증 내역";
+        $("breakdownDetailRows").innerHTML = rows.map((r) =>
+          "<tr><td>" + escapeHtml(r["구매일자"]) + " " + escapeHtml(r["구매시간"]) +
+          "</td><td>" + escapeHtml(r["이름"]) + "</td><td>" + escapeHtml(r["소속"]) +
+          "</td><td>" + escapeHtml(r["구매처"]) + "</td><td>" + escapeHtml(r["비용대분류"]) +
+          "</td><td>" + escapeHtml(r["승인번호"]) + "</td><td><b>" + money(r["결제금액"], currencyOf(r)) + "</b></td></tr>"
+        ).join("");
+        $("breakdownDetail").hidden = false;
+        $("breakdownDetail").scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+
+      function closeBreakdownDetail() {
+        $("breakdownDetail").hidden = true;
+      }
+
+      function drawBars(id, entries, colorClass = "", limit = 12) {
+        const target = $(id);
+        const list = entries.slice(0, limit);
+        if (!list.length) {
+          target.innerHTML = '<div class="empty">조건에 해당하는 데이터가 없습니다.</div>';
+          return;
+        }
+        const max = Math.max(...list.map((x) => Number(x[1]) || 0), 1);
+        target.innerHTML = list.map(([label, amount]) =>
+          '<div class="bar-row"><span title="' + escapeHtml(label) + '">' + escapeHtml(label) +
+          '</span><div class="bar-track"><div class="bar-fill ' + colorClass + '" style="width:' +
+          Math.max(2, Math.round(Number(amount) / max * 100)) + '%"></div></div><b>' + won(amount) + "</b></div>"
+        ).join("");
+      }
+
+      function applyDashboardFilters() {
+        const rows = filteredReceipts();
+        const totals = rows.reduce((group, r) => {
+          const code = currencyOf(r);
+          group[code] = (group[code] || 0) + Number(r["결제금액"] || 0);
+          return group;
+        }, {});
+        $("total").innerHTML = Object.entries(totals).length
+          ? Object.entries(totals).map(([code, amount]) => money(amount, code)).join("<br>")
+          : "0 KRW";
+        $("count").textContent = rows.length + "건";
+        closeBreakdownDetail();
+        renderBreakdown(rows);
+
+        const ranked = [...rows].sort((a, b) =>
+          currencyOf(a).localeCompare(currencyOf(b)) || Number(b["결제금액"] || 0) - Number(a["결제금액"] || 0));
+        $("rankingRows").innerHTML = ranked.length
+          ? ranked.map((r, i) => "<tr><td>" + (i + 1) + "</td><td>" + escapeHtml(r["구매일자"]) +
+              "</td><td>" + escapeHtml(r["이름"]) + "</td><td>" + escapeHtml(r["소속"]) +
+              "</td><td>" + escapeHtml(r["구매처"]) + "</td><td>" + escapeHtml(r["비용대분류"]) +
+              "</td><td><b>" + money(r["결제금액"], currencyOf(r)) + "</b></td></tr>").join("")
+          : '<tr><td colspan="7" class="empty">조건에 해당하는 데이터가 없습니다.</td></tr>';
+      }
+
       function render(d) {
-        $("total").textContent = won(d.summary.total);
-        $("count").textContent = d.summary.count + "건";
-        $("avg").textContent = won(d.summary.average);
-        $("pending").textContent =
-          d.receipts.filter((r) => r["확인상태"] == "확인필요").length + "건";
-        $("users").innerHTML = Object.entries(d.summary.byUser)
-          .map(([k, v]) => "<p>" + k + "　<b>" + won(v) + "</b></p>")
-          .join("");
-        $("rows").innerHTML = d.receipts
+        applyDashboardFilters();
+        $("rows").innerHTML = [...d.receipts]
+          .sort((a, b) => String(b["구매일자"]).localeCompare(String(a["구매일자"])))
           .map(
             (r) =>
               "<tr><td>" +
@@ -341,7 +662,7 @@
               "</td><td>" +
               r["승인번호"] +
               "</td><td>" +
-              won(r["결제금액"]) +
+              money(r["결제금액"], currencyOf(r)) +
               "</td></tr>",
           )
           .join("");
@@ -400,6 +721,7 @@
           "category",
           "subcategory",
           "approvalNumber",
+          "currencyCode",
           "amount",
         ].forEach((k) => (x[k] = $(k).value));
 
