@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- RECEIPT FRONTEND — DUPLICATE CONFIRM V4 — 2026-08-20 -->
 <html lang="ko">
   <head>
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
@@ -600,7 +601,7 @@
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
-      const REQUIRED_BACKEND_BUILD = "2026-08-20-DUPLICATE-V3";
+      const REQUIRED_BACKEND_BUILD = "2026-08-20-DUPLICATE-CONFIRM-V4";
 
    
       let app = {};
@@ -1305,9 +1306,26 @@
         }
 
         try {
-          await postJob(editingId ? "update" : "save", {
+          let result = await postJob(editingId ? "update" : "save", {
             payload: JSON.stringify(x),
           });
+          if (result && result.duplicate) {
+            const d = result.existing || {};
+            const amountText = Number(d.amount || 0).toLocaleString() + " " + (d.currencyCode || "");
+            const confirmed = confirm(
+              "중복 가능성이 있는 영수증입니다.\n\n" +
+              "구매일자: " + (d.purchaseDate || "-") + "\n" +
+              "사용자: " + (d.buyerName || "-") + "\n" +
+              "승인번호: " + (d.approvalNumber || "-") + "\n" +
+              "금액: " + amountText + "\n\n" +
+              "그래도 저장하시겠습니까?"
+            );
+            if (!confirmed) return;
+            x.allowDuplicate = true;
+            result = await postJob(editingId ? "update" : "save", {
+              payload: JSON.stringify(x),
+            });
+          }
           alert(editingId ? "수정 내용을 저장했습니다." : "저장했습니다.");
           location.reload();
         } catch (err) {
@@ -1325,6 +1343,6 @@
       };
     </script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <script src="https://bomi87.github.io/SK-Aviation-portal/common-auth.js"></script>
+    <script src="https://bomi87.github.io/SK-Aviation-portal/common-auth.js?v=20260820-3"></script>
   </body>
 </html>
