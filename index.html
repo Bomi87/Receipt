@@ -99,7 +99,7 @@
       }
       .filters {
         display: grid;
-        grid-template-columns: repeat(7, minmax(110px, 1fr));
+        grid-template-columns: repeat(8, minmax(100px, 1fr));
         gap: 10px;
         align-items: end;
       }
@@ -482,7 +482,11 @@
     </style>
   </head>
   <body>
-    <header><b>Receipt Management</b>　영수증 비용관리</header>
+    <div id="authScreen" style="position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;background:#eef2f6;color:#172033;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:15px;font-weight:700;">
+      승인 확인 중...
+    </div>
+    <div id="appRoot" style="display:none;">
+    <header><b>Receipt Flow</b>　영수증 비용관리</header>
     <main>
       <div class="tabs">
         <button id="tabDash" onclick="show('dash', this)" class="on">대시보드</button
@@ -497,6 +501,7 @@
           <label>소속<select id="filterDepartment" onchange="applyDashboardFilters()"></select></label>
           <label>비용분류<select id="filterCategory" onchange="applyDashboardFilters()"></select></label>
           <label>통화<select id="filterCurrency" onchange="applyDashboardFilters()"></select></label>
+          <label>제출자<select id="filterSubmitter" onchange="applyDashboardFilters()"></select></label>
           <button type="button" class="reset-filter-button" onclick="resetDashboardFilters()">필터 초기화</button>
         </div>
         <div class="cards">
@@ -523,7 +528,7 @@
             <button type="button" class="export-button" onclick="exportFilteredData()">Excel 추출</button>
           </div>
           <table class="rank-table">
-            <thead><tr><th>구매일시</th><th>사용자</th><th>구매처</th><th>분류</th><th>승인번호</th><th>금액</th><th>관리</th></tr></thead>
+            <thead><tr><th>구매일시</th><th>사용자</th><th>구매처</th><th>분류</th><th>승인번호</th><th>금액</th><th>제출자</th><th>관리</th></tr></thead>
             <tbody id="rankingRows"></tbody>
           </table>
         </div>
@@ -591,6 +596,7 @@
         </div>
       </section>
     </main>
+    </div>
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
@@ -598,6 +604,8 @@
    
       let app = {};
       let image = "";
+      let currentPortalUser = null;
+      let receiptAppStarted = false;
       const ACTIVE_TAB_KEY = "receiptFlow.activeTab";
 
       const $ = (id) => document.getElementById(id);
@@ -775,7 +783,7 @@
       }
 
       function resetDashboardFilters() {
-        ["filterYear", "filterMonth", "filterEmployee", "filterDepartment", "filterCategory", "filterCurrency"]
+        ["filterYear", "filterMonth", "filterEmployee", "filterDepartment", "filterCategory", "filterCurrency", "filterSubmitter"]
           .forEach((id) => ($(id).value = ""));
         applyDashboardFilters();
       }
@@ -787,13 +795,15 @@
         const department = $("filterDepartment").value;
         const category = $("filterCategory").value;
         const currency = $("filterCurrency").value;
+        const submitter = $("filterSubmitter").value;
         return (app.receipts || []).filter((r) =>
           (excludeId === "filterYear" || !year || String(r["연도"]) === year) &&
           (excludeId === "filterMonth" || !month || String(r["월"]) === month) &&
           (excludeId === "filterEmployee" || !employee || r["이름"] === employee) &&
           (excludeId === "filterDepartment" || !department || r["소속"] === department) &&
           (excludeId === "filterCategory" || !category || r["비용대분류"] === category) &&
-          (excludeId === "filterCurrency" || !currency || currencyOf(r) === currency)
+          (excludeId === "filterCurrency" || !currency || currencyOf(r) === currency) &&
+          (excludeId === "filterSubmitter" || !submitter || String(r["제출자"] || "") === submitter)
         );
       }
 
@@ -809,6 +819,7 @@
           filterDepartment: $("filterDepartment").value,
           filterCategory: $("filterCategory").value,
           filterCurrency: $("filterCurrency").value,
+          filterSubmitter: $("filterSubmitter").value,
         };
         const configs = [
           ["filterYear", "연도", "전체 연도", true],
@@ -816,6 +827,7 @@
           ["filterEmployee", "이름", "전체 사용자", false],
           ["filterDepartment", "소속", "전체 소속", false],
           ["filterCategory", "비용대분류", "전체 분류", false],
+          ["filterSubmitter", "제출자", "전체 제출자", false],
         ];
         configs.forEach(([id, key, label, reverse]) => {
           const values = uniqueValues(rowsMatchingTopFilters(id), key);
@@ -996,9 +1008,10 @@
               "</td><td>" + escapeHtml(r["구매처"]) + "</td><td>" + escapeHtml(r["비용대분류"]) +
               "</td><td>" + escapeHtml(r["승인번호"]) + "</td><td><b>" +
               money(r["결제금액"], currencyOf(r)) + "</b></td><td>" +
+              escapeHtml(r["제출자"] || "-") + "</td><td>" +
               receiptActionButtons(r) + "</td></tr>"
             ).join("")
-          : '<tr><td colspan="7" class="empty">조건에 해당하는 데이터가 없습니다.</td></tr>';
+          : '<tr><td colspan="8" class="empty">조건에 해당하는 데이터가 없습니다.</td></tr>';
       }
 
       function receiptActionButtons(r) {
@@ -1123,7 +1136,7 @@
           return;
         }
         const table = [
-          ["구매일자", "구매시간", "사용자", "사번", "구매처", "분류", "세부", "승인번호", "금액", "화폐"],
+          ["구매일자", "구매시간", "사용자", "사번", "구매처", "분류", "세부", "승인번호", "금액", "화폐", "제출자"],
           ...rows.map((r) => [
             r["구매일자"],
             r["구매시간"],
@@ -1135,6 +1148,7 @@
             r["승인번호"],
             Number(r["결제금액"] || 0),
             currencyOf(r),
+            r["제출자"] || "",
           ]),
         ];
         const csv = "\uFEFF" + table.map((row) => row.map(csvCell).join(",")).join("\r\n");
@@ -1274,6 +1288,8 @@
           "amount",
         ].forEach((k) => (x[k] = $(k).value));
         const editingId = $("editingReceiptId").value;
+        x.submitterName = String((currentPortalUser && currentPortalUser.name) || "").trim();
+        x.submitterEmail = String((currentPortalUser && currentPortalUser.email) || "").trim();
         if (editingId) {
           x.receiptId = editingId;
           x.version = $("editingReceiptVersion").value;
@@ -1290,8 +1306,16 @@
         }
       }
 
-      restoreActiveTab();
-      init();
+      window.startProtectedApp = function (detail) {
+        if (receiptAppStarted) return;
+        currentPortalUser = (detail && detail.user) || window.CURRENT_PORTAL_USER || null;
+        if (!currentPortalUser || !currentPortalUser.email) return;
+        receiptAppStarted = true;
+        restoreActiveTab();
+        init();
+      };
     </script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://bomi87.github.io/SK-Aviation-portal/common-auth.js"></script>
   </body>
 </html>
