@@ -600,6 +600,7 @@
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
+      const REQUIRED_BACKEND_BUILD = "2026-08-20-DUPLICATE-V3";
 
    
       let app = {};
@@ -728,6 +729,9 @@
         try {
           const response = await jsonp("initial");
           const d = response.data;
+          if (d.backendBuild !== REQUIRED_BACKEND_BUILD) {
+            throw new Error("최신 중복방지 백엔드가 배포되지 않았습니다. Apps Script를 새 버전으로 다시 배포해 주세요.");
+          }
           app = d;
           $("buyerName").innerHTML = '<option value="">구매자를 선택하세요</option>' + d.employees
             .map(
@@ -898,6 +902,9 @@
         try {
           const response = await jsonp("initial");
           const d = response.data;
+          if (d.backendBuild !== REQUIRED_BACKEND_BUILD) {
+            throw new Error("최신 중복방지 백엔드가 배포되지 않았습니다. Apps Script를 새 버전으로 다시 배포해 주세요.");
+          }
           app = {
             ...app,
             ...d,
