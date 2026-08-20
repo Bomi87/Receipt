@@ -91,8 +91,11 @@
         display: block;
         font-size: 22px;
         margin-top: 9px;
+        white-space: nowrap;
       }
       .total-title-approx {
+        display: inline-block;
+        white-space: nowrap;
         color: #000;
         font-size: 0.875em;
         font-style: italic;
@@ -448,7 +451,27 @@
       }
       @media (max-width: 700px) {
         .cards {
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: minmax(0, 2.2fr) minmax(96px, 0.8fr);
+          gap: 10px;
+        }
+        .cards .panel {
+          padding: 14px;
+        }
+        .cards .total-card b {
+          font-size: 20px;
+          line-height: 1.35;
+        }
+        .cards .count-card {
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+        .cards .count-card b {
+          font-size: 22px;
+        }
+        .total-title-approx {
+          display: block;
+          margin-top: 2px;
+          font-size: 0.82em;
         }
         .scan {
           grid-template-columns: 1fr;
@@ -506,8 +529,8 @@
           <button type="button" class="reset-filter-button" onclick="resetDashboardFilters()">필터 초기화</button>
         </div>
         <div class="cards">
-          <article class="panel"><span id="totalTitle">총 결제금액</span><b id="total">0원</b></article>
-          <article class="panel">등록 영수증<b id="count">0건</b></article>
+          <article class="panel total-card"><span id="totalTitle">총 결제금액</span><b id="total">0원</b></article>
+          <article class="panel count-card">등록 영수증<b id="count">0건</b></article>
         </div>
         <div class="panel">
           <div class="breakdown-head">
