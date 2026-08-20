@@ -711,8 +711,10 @@
           body,
         }).catch(() => {});
 
-        for (let i = 0; i < 180; i += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 700));
+        // 상태 확인은 1.5초 간격으로 수행하여 동시 실행과 호출량을 줄입니다.
+        // 84회 × 1.5초 = 기존과 비슷한 최대 약 126초 대기입니다.
+        for (let i = 0; i < 84; i += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
           const result = await jsonp("status", { requestId });
           if (result.state === "done") return result.data;
           if (result.state === "error") {
@@ -822,12 +824,12 @@
           filterSubmitter: $("filterSubmitter").value,
         };
         const configs = [
-          ["filterYear", "연도", "전체 연도", true],
-          ["filterMonth", "월", "전체 월", false],
-          ["filterEmployee", "이름", "전체 사용자", false],
-          ["filterDepartment", "소속", "전체 소속", false],
-          ["filterCategory", "비용대분류", "전체 분류", false],
-          ["filterSubmitter", "제출자", "전체 제출자", false],
+          ["filterYear", "연도", "-", true],
+          ["filterMonth", "월", "-", false],
+          ["filterEmployee", "이름", "-", false],
+          ["filterDepartment", "소속", "-", false],
+          ["filterCategory", "비용대분류", "-", false],
+          ["filterSubmitter", "제출자", "-", false],
         ];
         configs.forEach(([id, key, label, reverse]) => {
           const values = uniqueValues(rowsMatchingTopFilters(id), key);
@@ -836,7 +838,7 @@
         });
         const currencies = [...new Set(rowsMatchingTopFilters("filterCurrency").map(currencyOf))]
           .sort((a, b) => a.localeCompare(b));
-        fillFilter("filterCurrency", currencies, "전체 통화", selected.filterCurrency);
+        fillFilter("filterCurrency", currencies, "-", selected.filterCurrency);
       }
 
       function groupAmounts(rows, key) {
