@@ -658,7 +658,7 @@
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
-      const REQUIRED_BACKEND_BUILD = "2026-08-21-MOBILE-OCR-UPLOAD-FIX-V2";
+      const REQUIRED_BACKEND_BUILD = "2026-08-21-OCR-DEBUG-V3";
 
    
       let app = {};
@@ -764,27 +764,51 @@
           ...values,
         });
 
-        // 모바일에서는 대용량 이미지 POST가 실제로 전송되기 전에
-        // 상태 조회가 먼저 시작되지 않도록 전송 완료를 기다립니다.
-        try {
-          await fetch(BACKEND_URL, {
-            method: "POST",
-            mode: "no-cors",
-            body,
-          });
-        } catch (error) {
-          throw new Error(
-            "분석 요청을 백엔드에 전송하지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.",
-          );
-        }
+        let postFailed = null;
+        let postFinished = false;
+        const postPromise = fetch(BACKEND_URL, {
+          method: "POST",
+          mode: "no-cors",
+          body,
+        }).then(() => {
+          postFinished = true;
+        }).catch((error) => {
+          postFailed = error;
+        });
 
-        // 상태 확인은 1.5초 간격으로 수행하여 동시 실행과 호출량을 줄입니다.
-        // 84회 × 1.5초 = 기존과 비슷한 최대 약 126초 대기입니다.
+        let lastStage = "";
         let waitingCount = 0;
-        for (let i = 0; i < 84; i += 1) {
+        for (let i = 0; i < 120; i += 1) {
           await new Promise((resolve) => setTimeout(resolve, 1500));
 
-          const result = await jsonp("status", { requestId });
+          if (postFailed) {
+            throw new Error("백엔드 POST 전송 실패: " + (postFailed.message || String(postFailed)));
+          }
+
+          const result = await jsonp("status", {
+            requestId,
+            debugTime: Date.now(),
+          });
+
+          console.log("[OCR DEBUG]", {
+            requestId,
+            action,
+            postFinished,
+            state: result.state,
+            stage: result.stage,
+            message: result.message,
+            updatedAt: result.updatedAt,
+            responseCode: result.responseCode,
+            elapsedMs: result.elapsedMs,
+            dataUrlLength: result.dataUrlLength,
+            estimatedBytes: result.estimatedBytes,
+          });
+
+          if (result.stage && result.stage !== lastStage) {
+            lastStage = result.stage;
+            const statusElement = photo && photo.querySelector("p");
+            if (statusElement) statusElement.textContent = result.message || result.stage;
+          }
 
           if (result.state === "waiting") {
             waitingCount += 1;
@@ -799,12 +823,15 @@
           }
 
           waitingCount = 0;
-          if (result.state === "done") return result.data;
+          if (result.state === "done") {
+            await postPromise;
+            return result.data;
+          }
           if (result.state === "error") {
             throw new Error(result.error || "처리 중 오류가 발생했습니다.");
           }
         }
-        throw new Error("처리 시간이 초과되었습니다. 다시 시도해 주세요.");
+        throw new Error("처리 시간이 초과되었습니다. 마지막 단계: " + (lastStage || "확인 불가"));
       }
 
       async function init() {
