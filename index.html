@@ -1430,10 +1430,10 @@
             try {
               const capabilities = videoTrack.getCapabilities();
               if (capabilities.zoom) {
-                // 0.5× 초광각까지 과하게 넓히지 않고, 지원되는 경우 약 0.8×로 살짝 줌아웃합니다.
+                // 0.5× 초광각까지 과하게 넓히지 않고, 지원되는 경우 약 0.7×로 줌아웃합니다.
                 const zoom = Math.min(
                   capabilities.zoom.max,
-                  Math.max(capabilities.zoom.min, 0.8),
+                  Math.max(capabilities.zoom.min, 0.7),
                 );
                 await videoTrack.applyConstraints({ advanced: [{ zoom }] });
               }
