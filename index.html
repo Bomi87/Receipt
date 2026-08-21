@@ -334,12 +334,93 @@
         min-height: 420px;
         border: 2px dashed #becbd7;
         display: grid;
-        place-content: center;
+        grid-template-columns: minmax(0, 1fr);
+        align-content: center;
+        justify-content: stretch;
         text-align: center;
       }
       .drop img {
         max-width: 100%;
         max-height: 390px;
+      }
+      .image-source-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 100000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: rgba(8, 20, 34, 0.72);
+      }
+      .image-source-modal[hidden] {
+        display: none !important;
+      }
+      .scan-source-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        width: min(100%, 390px);
+        margin: 20px auto 0;
+      }
+      .scan-source-actions button,
+      .camera-actions button {
+        min-height: 48px;
+        border: 0;
+        border-radius: 10px;
+        padding: 11px 14px;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .scan-source-actions button:disabled {
+        opacity: 0.58;
+        cursor: wait;
+      }
+      .camera-choice,
+      .camera-capture {
+        background: #2676ed;
+        color: #fff;
+      }
+      .album-choice {
+        background: #14804a;
+        color: #fff;
+      }
+      .camera-cancel {
+        background: #edf2f7;
+        color: #29435f;
+      }
+      .camera-card {
+        width: min(96vw, 680px);
+        border-radius: 18px;
+        background: #07111d;
+        padding: 12px;
+        color: #fff;
+      }
+      .camera-preview-wrap {
+        position: relative;
+        overflow: hidden;
+        border-radius: 12px;
+        background: #000;
+      }
+      #cameraPreview {
+        display: block;
+        width: 100%;
+        max-height: 72vh;
+        object-fit: contain;
+      }
+      .receipt-guide {
+        position: absolute;
+        inset: 6% 8%;
+        border: 2px dashed rgba(255, 255, 255, 0.82);
+        border-radius: 12px;
+        pointer-events: none;
+      }
+      .camera-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        padding-top: 12px;
       }
       .form {
         display: grid;
@@ -585,19 +666,18 @@
       </section>
       <section id="scan" hidden>
         <div class="scan">
-          <div class="panel drop" onclick="file.click()">
+          <div class="panel drop">
             <div id="photo">
               <h2>⌁</h2>
               <b>영수증 촬영</b>
-              <p>눌러서 카메라를 실행하세요.</p>
+              <p>촬영하거나 앨범에서 사진을 선택하세요.</p>
             </div>
-            <input
-              id="file"
-              hidden
-              type="file"
-              accept="image/*"
-              capture="environment"
-            />
+            <div class="scan-source-actions">
+              <button type="button" class="camera-choice" onclick="startWebCamera()">카메라로 촬영</button>
+              <button type="button" class="album-choice" onclick="chooseFromAlbum()">앨범에서 선택</button>
+            </div>
+            <input id="albumFile" hidden type="file" accept="image/*" />
+            <input id="cameraFile" hidden type="file" accept="image/*" capture="environment" />
           </div>
           <form class="panel form" onsubmit="save(event)">
             <div class="date-time-row wide">
@@ -654,11 +734,23 @@
         </div>
       </section>
     </main>
+    <div id="cameraModal" class="image-source-modal" hidden>
+      <div class="camera-card">
+        <div class="camera-preview-wrap">
+          <video id="cameraPreview" autoplay muted playsinline></video>
+          <div class="receipt-guide"></div>
+        </div>
+        <div class="camera-actions">
+          <button type="button" class="camera-cancel" onclick="stopWebCamera()">취소</button>
+          <button type="button" class="camera-capture" onclick="captureWebCamera()">촬영</button>
+        </div>
+      </div>
+    </div>
     </div>
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
-      const REQUIRED_BACKEND_BUILD = "2026-08-22-ALIAS-MATCH-FIX-V9";
+      const REQUIRED_BACKEND_BUILD = "2026-08-22-SMART-CATEGORIES-V12";
 
    
       let app = {};
@@ -666,6 +758,8 @@
       let currentPortalUser = null;
       let receiptAppStarted = false;
       let saveInProgress = false;
+      let cameraStream = null;
+      let analysisInProgress = false;
       const ACTIVE_TAB_KEY = "receiptFlow.activeTab";
 
       const $ = (id) => document.getElementById(id);
@@ -1187,7 +1281,7 @@
         $("employeeId").value = "";
         $("currencyCode").value = "KRW";
         $("saveButton").textContent = "확인 후 저장";
-        $("photo").innerHTML = '<h2>⌁</h2><b>영수증 촬영</b><p>눌러서 카메라를 실행하세요.</p>';
+        $("photo").innerHTML = '<h2>⌁</h2><b>영수증 촬영</b><p>촬영하거나 앨범에서 사진을 선택하세요.</p>';
         image = "";
       }
 
@@ -1302,6 +1396,72 @@
       function render(d) {
         applyDashboardFilters();
       }
+
+      function chooseFromAlbum() {
+        if (analysisInProgress) return;
+        const input = $("albumFile");
+        input.value = "";
+        input.click();
+      }
+
+      async function startWebCamera() {
+        if (analysisInProgress || cameraStream) return;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          const fallback = $("cameraFile");
+          fallback.value = "";
+          fallback.click();
+          return;
+        }
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              facingMode: { ideal: "environment" },
+              width: { ideal: 1920 },
+              height: { ideal: 2560 },
+            },
+          });
+          const preview = $("cameraPreview");
+          preview.srcObject = cameraStream;
+          $("cameraModal").hidden = false;
+          await preview.play();
+        } catch (err) {
+          cameraStream = null;
+          alert("웹 카메라를 열 수 없습니다. 카메라 권한을 허용하거나 앨범에서 사진을 선택해 주세요.");
+        }
+      }
+
+      function stopWebCamera() {
+        if (cameraStream) {
+          cameraStream.getTracks().forEach((track) => track.stop());
+          cameraStream = null;
+        }
+        const preview = $("cameraPreview");
+        if (preview) preview.srcObject = null;
+        $("cameraModal").hidden = true;
+      }
+
+      async function captureWebCamera() {
+        const preview = $("cameraPreview");
+        if (!preview.videoWidth || !preview.videoHeight) {
+          alert("카메라 화면을 준비하고 있습니다. 잠시 후 다시 촬영해 주세요.");
+          return;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = preview.videoWidth;
+        canvas.height = preview.videoHeight;
+        canvas.getContext("2d").drawImage(preview, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+        stopWebCamera();
+        if (!blob) {
+          alert("촬영 이미지를 만들지 못했습니다. 다시 시도해 주세요.");
+          return;
+        }
+        await processReceiptImage(blob);
+      }
+
+      window.addEventListener("pagehide", stopWebCamera);
+
       async function compressImage(file) {
         const source = await new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -1375,9 +1535,13 @@
         return canvas.toDataURL("image/jpeg", 0.96);
       }
 
-      file.onchange = async (e) => {
-        const selectedFile = e.target.files[0];
+      async function processReceiptImage(selectedFile) {
         if (!selectedFile) return;
+        if (analysisInProgress) return;
+        analysisInProgress = true;
+        document.querySelectorAll(".scan-source-actions button").forEach((button) => {
+          button.disabled = true;
+        });
         try {
           image = await compressImage(selectedFile);
           photo.innerHTML = '<img src="' + image + '"><p>Vision OCR 분석 중…</p>';
@@ -1404,8 +1568,16 @@
         } catch (err) {
           photo.querySelector("p").textContent = "분석 실패";
           alert(err.message);
+        } finally {
+          analysisInProgress = false;
+          document.querySelectorAll(".scan-source-actions button").forEach((button) => {
+            button.disabled = false;
+          });
         }
-      };
+      }
+
+      $("albumFile").onchange = (event) => processReceiptImage(event.target.files[0]);
+      $("cameraFile").onchange = (event) => processReceiptImage(event.target.files[0]);
 
       async function save(e) {
         e.preventDefault();
