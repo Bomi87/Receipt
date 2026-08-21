@@ -658,7 +658,7 @@
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
-      const REQUIRED_BACKEND_BUILD = "2026-08-21-NO-RELOAD-V6";
+      const REQUIRED_BACKEND_BUILD = "2026-08-22-ALIAS-TABLE-RULES-V7";
 
    
       let app = {};
@@ -1390,6 +1390,9 @@
             criticalImage,
             ocrText: vision.text || "",
           });
+          if (x.category && ![...$("category").options].some((option) => option.value === x.category)) {
+            $("category").add(new Option(x.category, x.category));
+          }
           Object.entries(x).forEach(([k, v]) => {
             if ($(k) && v !== undefined) $(k).value = v;
           });
