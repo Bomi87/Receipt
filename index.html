@@ -1584,10 +1584,13 @@
         if (!selectedFile) return;
         if (analysisInProgress) return;
         analysisInProgress = true;
+        clearPreviousAnalysisResult();
         document.querySelectorAll(".scan-source-actions button").forEach((button) => {
           button.disabled = true;
         });
+        $("saveButton").disabled = true;
         try {
+          photo.innerHTML = '<h2>⌛</h2><b>새 영수증 준비 중…</b><p>이미지를 처리하고 있습니다.</p>';
           image = await compressImage(selectedFile);
           photo.innerHTML = '<img src="' + image + '"><p>Vision OCR 분석 중…</p>';
           const vision = await postJob("vision", { image });
@@ -1618,7 +1621,22 @@
           document.querySelectorAll(".scan-source-actions button").forEach((button) => {
             button.disabled = false;
           });
+          $("saveButton").disabled = false;
         }
+      }
+
+      function clearPreviousAnalysisResult() {
+        $("editingReceiptId").value = "";
+        $("editingReceiptVersion").value = "";
+        [
+          "purchaseDate", "purchaseTime", "buyerName", "employeeId",
+          "merchant", "category", "subcategory", "approvalNumber",
+          "amount", "memo",
+        ].forEach((id) => {
+          if ($(id)) $(id).value = "";
+        });
+        $("currencyCode").value = "KRW";
+        $("saveButton").textContent = "확인 후 저장";
       }
 
       $("albumFile").onchange = (event) => processReceiptImage(event.target.files[0]);
