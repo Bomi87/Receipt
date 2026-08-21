@@ -658,7 +658,7 @@
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
-      const REQUIRED_BACKEND_BUILD = "2026-08-21-OCR-DEBUG-V3";
+      const REQUIRED_BACKEND_BUILD = "2026-08-21-DIRECT-BRIDGE-V4";
 
    
       let app = {};
@@ -758,80 +758,71 @@
         checkBackendUrl();
         const requestId =
           Date.now().toString(36) + Math.random().toString(36).slice(2);
-        const body = new URLSearchParams({
-          action,
-          requestId,
-          ...values,
-        });
+        return new Promise((resolve, reject) => {
+          const iframeName = "receiptBridge_" + requestId;
+          const iframe = document.createElement("iframe");
+          iframe.name = iframeName;
+          iframe.style.display = "none";
 
-        let postFailed = null;
-        let postFinished = false;
-        const postPromise = fetch(BACKEND_URL, {
-          method: "POST",
-          mode: "no-cors",
-          body,
-        }).then(() => {
-          postFinished = true;
-        }).catch((error) => {
-          postFailed = error;
-        });
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = BACKEND_URL;
+          form.target = iframeName;
+          form.style.display = "none";
 
-        let lastStage = "";
-        let waitingCount = 0;
-        for (let i = 0; i < 120; i += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-
-          if (postFailed) {
-            throw new Error("백엔드 POST 전송 실패: " + (postFailed.message || String(postFailed)));
-          }
-
-          const result = await jsonp("status", {
-            requestId,
-            debugTime: Date.now(),
+          const fields = { action, requestId, ...values };
+          Object.entries(fields).forEach(([name, value]) => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = name;
+            input.value = value == null ? "" : String(value);
+            form.appendChild(input);
           });
 
-          console.log("[OCR DEBUG]", {
-            requestId,
-            action,
-            postFinished,
-            state: result.state,
-            stage: result.stage,
-            message: result.message,
-            updatedAt: result.updatedAt,
-            responseCode: result.responseCode,
-            elapsedMs: result.elapsedMs,
-            dataUrlLength: result.dataUrlLength,
-            estimatedBytes: result.estimatedBytes,
-          });
+          let finished = false;
+          const timeout = setTimeout(() => {
+            finish();
+            reject(new Error("백엔드 처리 시간이 180초를 초과했습니다."));
+          }, 180000);
 
-          if (result.stage && result.stage !== lastStage) {
-            lastStage = result.stage;
-            const statusElement = photo && photo.querySelector("p");
-            if (statusElement) statusElement.textContent = result.message || result.stage;
+          function decodePacket(encoded) {
+            const normalized = String(encoded || "")
+              .replace(/-/g, "+")
+              .replace(/_/g, "/");
+            const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+            const binary = atob(padded);
+            const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+            return JSON.parse(new TextDecoder("utf-8").decode(bytes));
           }
 
-          if (result.state === "waiting") {
-            waitingCount += 1;
-            // 여러 사용자의 동시 요청으로 Apps Script 실행이 대기할 수 있으므로
-            // 작업 미확인 상태를 최대 약 60초(40회 × 1.5초)까지 기다립니다.
-            if (waitingCount >= 40) {
-              throw new Error(
-                "백엔드에서 분석 요청을 확인하지 못했습니다. Apps Script 최신 버전 배포와 접속 권한을 확인해 주세요.",
-              );
+          function finish() {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timeout);
+            window.removeEventListener("message", onMessage);
+            form.remove();
+            iframe.remove();
+          }
+
+          function onMessage(event) {
+            const message = event.data || {};
+            if (!message.receiptBridge || message.requestId !== requestId) return;
+            try {
+              const packet = decodePacket(message.payload);
+              finish();
+              if (packet.ok) resolve(packet.data);
+              else reject(new Error(packet.error || "백엔드 처리 중 오류가 발생했습니다."));
+            } catch (err) {
+              finish();
+              reject(new Error("백엔드 응답을 해석하지 못했습니다: " + err.message));
             }
-            continue;
           }
 
-          waitingCount = 0;
-          if (result.state === "done") {
-            await postPromise;
-            return result.data;
-          }
-          if (result.state === "error") {
-            throw new Error(result.error || "처리 중 오류가 발생했습니다.");
-          }
-        }
-        throw new Error("처리 시간이 초과되었습니다. 마지막 단계: " + (lastStage || "확인 불가"));
+          window.addEventListener("message", onMessage);
+          document.body.appendChild(iframe);
+          document.body.appendChild(form);
+          form.submit();
+        });
       }
 
       async function init() {
