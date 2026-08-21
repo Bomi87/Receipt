@@ -658,7 +658,7 @@
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
-      const REQUIRED_BACKEND_BUILD = "2026-08-20-NO-DUPLICATE-ITALIAN-AUTH-V2";
+      const REQUIRED_BACKEND_BUILD = "2026-08-21-OCR-STATUS-FIX-V1";
 
    
       let app = {};
@@ -764,17 +764,42 @@
           ...values,
         });
 
+        let dispatchError = null;
         fetch(BACKEND_URL, {
           method: "POST",
           mode: "no-cors",
           body,
-        }).catch(() => {});
+        }).catch((error) => {
+          dispatchError = error;
+        });
 
         // 상태 확인은 1.5초 간격으로 수행하여 동시 실행과 호출량을 줄입니다.
         // 84회 × 1.5초 = 기존과 비슷한 최대 약 126초 대기입니다.
+        let waitingCount = 0;
         for (let i = 0; i < 84; i += 1) {
           await new Promise((resolve) => setTimeout(resolve, 1500));
+
+          if (dispatchError) {
+            throw new Error(
+              "분석 요청을 백엔드에 전송하지 못했습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.",
+            );
+          }
+
           const result = await jsonp("status", { requestId });
+
+          if (result.state === "waiting") {
+            waitingCount += 1;
+            // 여러 사용자의 동시 요청으로 Apps Script 실행이 대기할 수 있으므로
+            // 작업 미확인 상태를 최대 약 60초(40회 × 1.5초)까지 기다립니다.
+            if (waitingCount >= 40) {
+              throw new Error(
+                "백엔드에서 분석 요청을 확인하지 못했습니다. Apps Script 최신 버전 배포와 접속 권한을 확인해 주세요.",
+              );
+            }
+            continue;
+          }
+
+          waitingCount = 0;
           if (result.state === "done") return result.data;
           if (result.state === "error") {
             throw new Error(result.error || "처리 중 오류가 발생했습니다.");
