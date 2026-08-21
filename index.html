@@ -658,13 +658,14 @@
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
-      const REQUIRED_BACKEND_BUILD = "2026-08-21-DIRECT-BRIDGE-V4";
+      const REQUIRED_BACKEND_BUILD = "2026-08-21-SAVE-GUARD-V5";
 
    
       let app = {};
       let image = "";
       let currentPortalUser = null;
       let receiptAppStarted = false;
+      let saveInProgress = false;
       const ACTIVE_TAB_KEY = "receiptFlow.activeTab";
 
       const $ = (id) => document.getElementById(id);
@@ -1405,8 +1406,19 @@
 
       async function save(e) {
         e.preventDefault();
+        if (saveInProgress) return;
+        saveInProgress = true;
+        const saveButton = $("saveButton");
+        const originalButtonText = saveButton.textContent;
+        saveButton.disabled = true;
+        saveButton.textContent = "저장 중…";
         const x = collectReceiptPayload();
         const editingId = $("editingReceiptId").value;
+        if (!editingId) {
+          x.submissionToken = window.crypto && crypto.randomUUID
+            ? crypto.randomUUID()
+            : Date.now().toString(36) + Math.random().toString(36).slice(2);
+        }
         try {
           const result = await postJob(editingId ? "update" : "save", {
             payload: JSON.stringify(x),
@@ -1415,6 +1427,10 @@
           location.reload();
         } catch (err) {
           alert(err.message);
+        } finally {
+          saveInProgress = false;
+          saveButton.disabled = false;
+          saveButton.textContent = originalButtonText;
         }
       }
 
