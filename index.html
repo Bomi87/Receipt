@@ -753,7 +753,7 @@
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
-      const REQUIRED_BACKEND_BUILD = "2026-08-23-STABLE-HIGH-QUALITY-CAMERA-V29";
+      const REQUIRED_BACKEND_BUILD = "2026-08-23-STABLE-1X-CAMERA-V30";
 
    
       let app = {};
@@ -1430,10 +1430,10 @@
               const capabilities = videoTrack.getCapabilities();
               const advanced = {};
               if (capabilities.zoom) {
-                // 촬영 편의성을 위한 0.7× 줌아웃은 유지합니다.
+                // OCR 정확도를 위해 기본 1.0× 배율을 사용합니다.
                 const zoom = Math.min(
                   capabilities.zoom.max,
-                  Math.max(capabilities.zoom.min, 0.7),
+                  Math.max(capabilities.zoom.min, 1.0),
                 );
                 advanced.zoom = zoom;
               }
