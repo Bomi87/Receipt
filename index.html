@@ -753,7 +753,7 @@
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
-      const REQUIRED_BACKEND_BUILD = "2026-08-23-STABLE-MERCHANT-CLEAN-V28";
+      const REQUIRED_BACKEND_BUILD = "2026-08-23-STABLE-HIGH-QUALITY-CAMERA-V29";
 
    
       let app = {};
@@ -1420,22 +1420,34 @@
             audio: false,
             video: {
               facingMode: { ideal: "environment" },
-              width: { ideal: 1920 },
-              height: { ideal: 2560 },
-              aspectRatio: { ideal: 210 / 297 },
+              width: { ideal: 3024 },
+              height: { ideal: 4032 },
             },
           });
           const videoTrack = cameraStream.getVideoTracks()[0];
           if (videoTrack && typeof videoTrack.getCapabilities === "function") {
             try {
               const capabilities = videoTrack.getCapabilities();
+              const advanced = {};
               if (capabilities.zoom) {
-                // 0.5× 초광각까지 과하게 넓히지 않고, 지원되는 경우 약 0.7×로 줌아웃합니다.
+                // 촬영 편의성을 위한 0.7× 줌아웃은 유지합니다.
                 const zoom = Math.min(
                   capabilities.zoom.max,
                   Math.max(capabilities.zoom.min, 0.7),
                 );
-                await videoTrack.applyConstraints({ advanced: [{ zoom }] });
+                advanced.zoom = zoom;
+              }
+              if (Array.isArray(capabilities.focusMode) && capabilities.focusMode.includes("continuous")) {
+                advanced.focusMode = "continuous";
+              }
+              if (Array.isArray(capabilities.exposureMode) && capabilities.exposureMode.includes("continuous")) {
+                advanced.exposureMode = "continuous";
+              }
+              if (Array.isArray(capabilities.whiteBalanceMode) && capabilities.whiteBalanceMode.includes("continuous")) {
+                advanced.whiteBalanceMode = "continuous";
+              }
+              if (Object.keys(advanced).length) {
+                await videoTrack.applyConstraints({ advanced: [advanced] });
               }
             } catch (zoomError) {
               console.warn("카메라 줌아웃 적용 불가:", zoomError.message);
@@ -1496,7 +1508,7 @@
           canvas.width,
           canvas.height,
         );
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.92));
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.98));
         stopWebCamera();
         if (!blob) {
           alert("촬영 이미지를 만들지 못했습니다. 다시 시도해 주세요.");
@@ -1522,7 +1534,7 @@
         });
         // 모바일 업로드가 멈추지 않도록 해상도와 JPEG 용량을 제한합니다.
         // 영수증 OCR에 필요한 글자 해상도는 충분히 유지합니다.
-        const maxSize = 2400;
+        const maxSize = 3200;
         const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
         const canvas = document.createElement("canvas");
         canvas.width = Math.round(img.width * scale);
@@ -1530,7 +1542,7 @@
         canvas
           .getContext("2d")
           .drawImage(img, 0, 0, canvas.width, canvas.height);
-        return canvas.toDataURL("image/jpeg", 0.88);
+        return canvas.toDataURL("image/jpeg", 0.94);
       }
 
       async function createCriticalImage(source, regions) {
@@ -1545,7 +1557,7 @@
           : [{ x: 0, y: 0.42, width: 1, height: 0.58 }];
         // 모든 영수증 유형에서 상단 필기 이름·별칭을 다시 확대 분석합니다.
         selected.unshift({ x: 0, y: 0, width: 1, height: 0.26 });
-        const outputWidth = 2200;
+        const outputWidth = 2600;
         const prepared = selected.map((r) => {
           const sx = Math.max(0, Math.round(Number(r.x || 0) * img.width));
           const sy = Math.max(0, Math.round(Number(r.y || 0) * img.height));
