@@ -753,7 +753,7 @@
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbw1Faxi5ZdRbLfbcdybAJLe-X7qFbR5iYoCOLhvtK0gI-2tjGEO9sAc3CEfXf_xv0J7/exec";
-      const REQUIRED_BACKEND_BUILD = "2026-08-23-SLASH-MEMO-V24";
+      const REQUIRED_BACKEND_BUILD = "2026-08-23-STABLE-CATEGORY-NAME-ZOOM-V26";
 
    
       let app = {};
@@ -1541,10 +1541,10 @@
           element.src = source;
         });
         const selected = Array.isArray(regions) && regions.length
-          ? regions.slice(0, 3)
-          : [];
-        // 줄글 수기정보·원화금액·승인번호가 주로 있는 하단을 항상 확대본에 포함합니다.
-        selected.push({ x: 0, y: 0.58, width: 1, height: 0.42 });
+          ? regions.slice(0, 4)
+          : [{ x: 0, y: 0.42, width: 1, height: 0.58 }];
+        // 모든 영수증 유형에서 상단 필기 이름·별칭을 다시 확대 분석합니다.
+        selected.unshift({ x: 0, y: 0, width: 1, height: 0.26 });
         const outputWidth = 2200;
         const prepared = selected.map((r) => {
           const sx = Math.max(0, Math.round(Number(r.x || 0) * img.width));
