@@ -1579,6 +1579,16 @@
         const list = Array.from(files || []).filter(Boolean);
         if (!list.length || batchInProgress) return;
 
+        const confirmed = window.confirm(
+          "선택된 " + list.length + "개의 파일 분석을 시작하시겠습니까?"
+        );
+
+        if (!confirmed) {
+          const input = $("overseasBatchFile");
+          if (input) input.value = "";
+          return;
+        }
+
         batchInProgress = true;
         analysisInProgress = true;
         const buttons = document.querySelectorAll(".scan-source-actions button");
