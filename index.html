@@ -764,7 +764,7 @@
     <script>
       // Apps Script에서 웹 앱으로 배포한 /exec 주소를 입력하세요.
       const BACKEND_URL = "https://script.google.com/macros/s/AKfycbzGkj2PjmOEZY6JVqefJYUOQsHU6WdgyMZ7h6g92ujhlXViadJlYKVEu2m8i3QmRgjC/exec";
-      const REQUIRED_BACKEND_BUILD = "2026-08-23-FAST-APPROVAL-FOCUS-V23";
+      const REQUIRED_BACKEND_BUILD = "2026-08-25-RECEIPT-PNG-V24";
 
    
       let app = {};
@@ -774,6 +774,7 @@
       let saveInProgress = false;
       let cameraStream = null;
       let analysisInProgress = false;
+      let currentReceiptType = "";
       const ACTIVE_TAB_KEY = "receiptFlow.activeTab";
 
       const $ = (id) => document.getElementById(id);
@@ -984,6 +985,7 @@
         ].forEach((k) => (x[k] = $(k).value));
         x.submitterName = String((currentPortalUser && currentPortalUser.name) || "").trim();
         x.submitterEmail = String((currentPortalUser && currentPortalUser.email) || "").trim();
+        x.receiptType = currentReceiptType || "";
         const editingId = $("editingReceiptId").value;
         if (editingId) {
           x.receiptId = editingId;
@@ -1281,6 +1283,11 @@
         $("currencyCode").value = currencyOf(r);
         $("amount").value = r["결제금액"] || "";
         $("memo").value = r["메모"] || "";
+        currentReceiptType = r["영수증구분"] === "국내"
+          ? "domestic"
+          : r["영수증구분"] === "해외"
+            ? "overseas"
+            : "";
         $("saveButton").textContent = "수정 내용 저장";
         $("photo").innerHTML = '<h2>✎</h2><b>영수증 수정 중</b><p>필요한 항목을 고친 뒤 저장하세요.</p>';
         show("scan", $("tabScan"));
@@ -1297,6 +1304,7 @@
         $("saveButton").textContent = "확인 후 저장";
         $("photo").innerHTML = '<h2>⌁</h2><b>영수증 촬영</b><p>촬영하거나 앨범에서 사진을 선택하세요.</p>';
         image = "";
+        currentReceiptType = "";
       }
 
       async function deleteReceiptById(receiptId) {
@@ -1638,6 +1646,7 @@
             criticalImage,
             ocrText: vision.text || "",
           });
+          currentReceiptType = String(x.receiptType || "").toLowerCase();
           if (x.category && ![...$("category").options].some((option) => option.value === x.category)) {
             $("category").add(new Option(x.category, x.category));
           }
@@ -1672,11 +1681,34 @@
           if ($(id)) $(id).value = "";
         });
         $("currencyCode").value = "KRW";
+        currentReceiptType = "";
         $("saveButton").textContent = "확인 후 저장";
       }
 
       $("albumFile").onchange = (event) => processReceiptImage(event.target.files[0]);
       $("cameraFile").onchange = (event) => processReceiptImage(event.target.files[0]);
+
+      async function createSavePng(dataUrl) {
+        if (!dataUrl) return "";
+        const img = await new Promise((resolve, reject) => {
+          const element = new Image();
+          element.onload = () => resolve(element);
+          element.onerror = reject;
+          element.src = dataUrl;
+        });
+        // OCR용 JPEG와 별개로 Drive 저장 시에만 실제 PNG를 생성합니다.
+        // 긴 변 2200px 이하로 제한해 모바일 POST 용량을 과도하게 키우지 않습니다.
+        const maxSize = 2200;
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL("image/png");
+      }
 
       async function save(e) {
         e.preventDefault();
@@ -1693,6 +1725,12 @@
             : Date.now().toString(36) + Math.random().toString(36).slice(2);
         }
         try {
+          // 국내 신규 영수증에 한해서만 Drive 저장용 PNG를 추가 전송합니다.
+          if (!editingId && currentReceiptType === "domestic" && image) {
+            saveButton.textContent = "PNG 준비 중…";
+            x.pngImage = await createSavePng(image);
+            saveButton.textContent = "저장 중…";
+          }
           const result = await postJob(editingId ? "update" : "save", {
             payload: JSON.stringify(x),
           });
