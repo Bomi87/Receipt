@@ -392,6 +392,52 @@
         background: #14804a;
         color: #fff;
       }
+
+      .batch-choice {
+        grid-column: 1 / -1;
+        background: #7a56d8;
+        color: #fff;
+      }
+
+      .batch-progress {
+        grid-column: 1 / -1;
+        margin-top: 12px;
+        padding: 12px;
+        border: 1px solid #d9e1e8;
+        border-radius: 10px;
+        background: #f8fafc;
+        text-align: left;
+      }
+
+      .batch-progress[hidden] {
+        display: none !important;
+      }
+
+      .batch-progress-track {
+        width: 100%;
+        height: 10px;
+        margin: 9px 0 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #e7edf3;
+      }
+
+      .batch-progress-fill {
+        width: 0%;
+        height: 100%;
+        border-radius: inherit;
+        background: #2676ed;
+        transition: width 0.2s ease;
+      }
+
+      .batch-log {
+        max-height: 150px;
+        overflow: auto;
+        margin-top: 8px;
+        font-size: 12px;
+        line-height: 1.55;
+        color: #52677d;
+      }
       .camera-cancel {
         background: #edf2f7;
         color: #29435f;
@@ -689,9 +735,19 @@
             <div class="scan-source-actions">
               <button type="button" class="camera-choice" onclick="startWebCamera()">카메라로 촬영</button>
               <button type="button" class="album-choice" onclick="chooseFromAlbum()">앨범에서 선택</button>
+              <button type="button" class="batch-choice" onclick="chooseOverseasBatch()">해외영수증 일괄 업로드</button>
+              <div id="batchProgress" class="batch-progress" hidden>
+                <b id="batchStatus">대기 중</b>
+                <div class="batch-progress-track">
+                  <div id="batchProgressFill" class="batch-progress-fill"></div>
+                </div>
+                <div id="batchProgressText">0 / 0</div>
+                <div id="batchLog" class="batch-log"></div>
+              </div>
             </div>
             <input id="albumFile" hidden type="file" accept="image/*" />
             <input id="cameraFile" hidden type="file" accept="image/*" capture="environment" />
+            <input id="overseasBatchFile" hidden type="file" accept="image/png,image/jpeg,image/*" multiple />
           </div>
           <form class="panel form" onsubmit="save(event)">
             <div class="date-time-row wide">
@@ -774,6 +830,7 @@
       let saveInProgress = false;
       let cameraStream = null;
       let analysisInProgress = false;
+      let batchInProgress = false;
       let currentReceiptType = "";
       const ACTIVE_TAB_KEY = "receiptFlow.activeTab";
 
@@ -1420,14 +1477,182 @@
       }
 
       function chooseFromAlbum() {
-        if (analysisInProgress) return;
+        if (analysisInProgress || batchInProgress) return;
         const input = $("albumFile");
         input.value = "";
         input.click();
       }
 
+      function chooseOverseasBatch() {
+        if (analysisInProgress || batchInProgress || saveInProgress) return;
+        const input = $("overseasBatchFile");
+        input.value = "";
+        input.click();
+      }
+
+      function setBatchProgress_(done, total, message) {
+        const progress = $("batchProgress");
+        const fill = $("batchProgressFill");
+        const status = $("batchStatus");
+        const text = $("batchProgressText");
+        if (progress) progress.hidden = false;
+        if (fill) fill.style.width = total ? Math.min(100, Math.round((done / total) * 100)) + "%" : "0%";
+        if (status) status.textContent = message || "처리 중…";
+        if (text) text.textContent = done + " / " + total;
+      }
+
+      function appendBatchLog_(message, isError) {
+        const log = $("batchLog");
+        if (!log) return;
+        const line = document.createElement("div");
+        line.textContent = message;
+        if (isError) line.style.color = "#b42318";
+        log.appendChild(line);
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function buildBatchReceiptPayload_(x) {
+        return {
+          purchaseDate: String(x.purchaseDate || "").trim(),
+          purchaseTime: String(x.purchaseTime || "").trim(),
+          buyerName: String(x.buyerName || "").trim(),
+          employeeId: String(x.employeeId || "").trim(),
+          merchant: String(x.merchant || "").trim(),
+          category: String(x.category || "").trim(),
+          subcategory: String(x.subcategory || "").trim(),
+          approvalNumber: String(x.approvalNumber || "N/A").trim() || "N/A",
+          currencyCode: String(x.currencyCode || "KRW").trim().toUpperCase(),
+          amount: Number(x.amount || 0),
+          memo: String(x.memo || "").trim(),
+          submitterName: String((currentPortalUser && currentPortalUser.name) || "").trim(),
+          submitterEmail: String((currentPortalUser && currentPortalUser.email) || "").trim(),
+          receiptType: "overseas",
+          submissionToken: window.crypto && crypto.randomUUID
+            ? crypto.randomUUID()
+            : Date.now().toString(36) + Math.random().toString(36).slice(2),
+        };
+      }
+
+      function validateBatchReceiptPayload_(x) {
+        const missing = [];
+        if (!x.purchaseDate) missing.push("구매일자");
+        if (!x.buyerName) missing.push("구매자");
+        if (!x.merchant) missing.push("구매처");
+        if (!x.category) missing.push("비용분류");
+        if (!(Number(x.amount || 0) > 0)) missing.push("결제금액");
+        return missing;
+      }
+
+      async function analyzeOneOverseasBatchFile_(file) {
+        const compressed = await compressImage(file);
+        const vision = await postJob("vision", { image: compressed });
+        const criticalImage = await createCriticalImage(
+          compressed,
+          vision.regions,
+          vision.approvalRegions,
+        );
+        const analyzed = await postJob("analyze", {
+          image: compressed,
+          criticalImage,
+          ocrText: vision.text || "",
+        });
+
+        const detectedType = String(analyzed.receiptType || "").toLowerCase();
+        if (detectedType !== "overseas") {
+          throw Error("해외영수증으로 판별되지 않아 자동 저장하지 않았습니다.");
+        }
+
+        const payload = buildBatchReceiptPayload_(analyzed);
+        const missing = validateBatchReceiptPayload_(payload);
+        if (missing.length) {
+          throw Error("필수정보 확인 필요: " + missing.join(", "));
+        }
+
+        // 해외 일괄 업로드는 pngImage를 전송하지 않으므로 Drive PNG 링크를 만들지 않습니다.
+        const saved = await postJob("save", {
+          payload: JSON.stringify(payload),
+        });
+        return { analyzed, saved };
+      }
+
+      async function processOverseasBatch(files) {
+        const list = Array.from(files || []).filter(Boolean);
+        if (!list.length || batchInProgress) return;
+
+        batchInProgress = true;
+        analysisInProgress = true;
+        const buttons = document.querySelectorAll(".scan-source-actions button");
+        buttons.forEach((button) => (button.disabled = true));
+        $("saveButton").disabled = true;
+        $("batchLog").innerHTML = "";
+
+        const result = {
+          total: list.length,
+          success: 0,
+          failed: 0,
+          failures: [],
+        };
+
+        try {
+          setBatchProgress_(0, list.length, "해외영수증 일괄 분석 시작");
+
+          // 안정성을 위해 자동 처리는 순차 실행합니다.
+          // 사용자는 여러 파일을 한 번에 선택하면 되고, 이후 분석·저장은 자동으로 이어집니다.
+          for (let i = 0; i < list.length; i += 1) {
+            const file = list[i];
+            const displayName = file.name || ("파일 " + (i + 1));
+            setBatchProgress_(i, list.length, (i + 1) + "번째 분석 중 · " + displayName);
+
+            try {
+              const item = await analyzeOneOverseasBatchFile_(file);
+              result.success += 1;
+
+              if (item.saved && item.saved.receipt) {
+                const receipts = app.receipts || [];
+                receipts.unshift(item.saved.receipt);
+                app.receipts = receipts;
+              }
+
+              appendBatchLog_("✓ " + displayName + " · 저장 완료", false);
+            } catch (err) {
+              result.failed += 1;
+              result.failures.push({
+                name: displayName,
+                error: err && err.message ? err.message : String(err),
+              });
+              appendBatchLog_("✕ " + displayName + " · " + (err && err.message ? err.message : String(err)), true);
+            }
+
+            setBatchProgress_(i + 1, list.length, "처리 중…");
+          }
+
+          setupDashboardFilters();
+          render(app);
+
+          const summary = "완료 · 성공 " + result.success + "건 / 실패 " + result.failed + "건";
+          setBatchProgress_(list.length, list.length, summary);
+
+          if (result.failed) {
+            alert(
+              "해외영수증 일괄 업로드 완료\n\n" +
+              "성공: " + result.success + "건\n" +
+              "실패/확인필요: " + result.failed + "건\n\n" +
+              "아래 진행 로그에서 실패 파일을 확인해 주세요.",
+            );
+          } else {
+            alert("해외영수증 " + result.success + "건을 모두 저장했습니다.");
+          }
+        } finally {
+          batchInProgress = false;
+          analysisInProgress = false;
+          buttons.forEach((button) => (button.disabled = false));
+          $("saveButton").disabled = false;
+          $("overseasBatchFile").value = "";
+        }
+      }
+
       async function startWebCamera() {
-        if (analysisInProgress || cameraStream) return;
+        if (analysisInProgress || batchInProgress || cameraStream) return;
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
           const fallback = $("cameraFile");
           fallback.value = "";
@@ -1626,7 +1851,7 @@
 
       async function processReceiptImage(selectedFile) {
         if (!selectedFile) return;
-        if (analysisInProgress) return;
+        if (analysisInProgress || batchInProgress) return;
         analysisInProgress = true;
         clearPreviousAnalysisResult();
         document.querySelectorAll(".scan-source-actions button").forEach((button) => {
@@ -1687,6 +1912,7 @@
 
       $("albumFile").onchange = (event) => processReceiptImage(event.target.files[0]);
       $("cameraFile").onchange = (event) => processReceiptImage(event.target.files[0]);
+      $("overseasBatchFile").onchange = (event) => processOverseasBatch(event.target.files);
 
       async function createSavePng(dataUrl) {
         if (!dataUrl) return "";
@@ -1712,7 +1938,7 @@
 
       async function save(e) {
         e.preventDefault();
-        if (saveInProgress) return;
+        if (saveInProgress || batchInProgress) return;
         saveInProgress = true;
         const saveButton = $("saveButton");
         saveButton.disabled = true;
