@@ -1698,7 +1698,7 @@
         });
         // OCR용 JPEG와 별개로 Drive 저장 시에만 실제 PNG를 생성합니다.
         // 긴 변 2200px 이하로 제한해 모바일 POST 용량을 과도하게 키우지 않습니다.
-        const maxSize = 2200;
+        const maxSize = 1600;
         const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
         const canvas = document.createElement("canvas");
         canvas.width = Math.max(1, Math.round(img.width * scale));
