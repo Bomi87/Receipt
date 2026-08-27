@@ -773,7 +773,8 @@
             </label>
             <label>
               비용 분류
-              <select id="category"></select>
+              <input id="category" list="categoryOptions" autocomplete="off" />
+              <datalist id="categoryOptions"></datalist>
             </label>
             <label>
               세부 분류
@@ -1014,8 +1015,8 @@
                 "</option>",
             )
             .join("");
-          $("category").innerHTML = d.categories
-            .map((x) => "<option>" + x + "</option>")
+          $("categoryOptions").innerHTML = d.categories
+            .map((x) => '<option value="' + escapeHtml(x) + '"></option>')
             .join("");
           setupDashboardFilters();
           $("buyerName").value = "";
@@ -1882,9 +1883,6 @@
             ocrText: vision.text || "",
           });
           currentReceiptType = String(x.receiptType || "").toLowerCase();
-          if (x.category && ![...$("category").options].some((option) => option.value === x.category)) {
-            $("category").add(new Option(x.category, x.category));
-          }
           Object.entries(x).forEach(([k, v]) => {
             if ($(k) && v !== undefined) $(k).value = v;
           });
