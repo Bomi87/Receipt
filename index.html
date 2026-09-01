@@ -492,6 +492,69 @@
         font-size: 13px;
         font-weight: 600;
       }
+      .form label.category-field {
+        overflow: visible;
+        position: relative;
+        z-index: 5;
+      }
+      .category-combobox {
+        position: relative;
+        margin-top: 7px;
+      }
+      .form .category-combobox input {
+        margin-top: 0;
+        padding-right: 44px;
+      }
+      .category-dropdown-button {
+        position: absolute;
+        top: 1px;
+        right: 1px;
+        width: 42px;
+        height: 46px;
+        border: 0;
+        border-left: 1px solid #e3e9ef;
+        border-radius: 0 8px 8px 0;
+        background: #fff;
+        color: #36506b;
+        font-size: 18px;
+        cursor: pointer;
+      }
+      .category-dropdown {
+        position: absolute;
+        z-index: 1000;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        max-height: 240px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        border: 1px solid #cbd7e3;
+        border-radius: 9px;
+        background: #fff;
+        box-shadow: 0 8px 22px rgba(20, 38, 60, 0.18);
+      }
+      .category-dropdown[hidden] {
+        display: none;
+      }
+      .category-option {
+        width: 100%;
+        min-height: 44px;
+        border: 0;
+        border-bottom: 1px solid #edf1f5;
+        background: #fff;
+        color: #18293b;
+        padding: 10px 12px;
+        text-align: left;
+        font-family: inherit;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      .category-option:last-child {
+        border-bottom: 0;
+      }
+      .category-option:active {
+        background: #eaf2ff;
+      }
       .form input,
       .form select {
         display: block;
@@ -771,10 +834,13 @@
               구매처
               <input id="merchant" required />
             </label>
-            <label>
+            <label class="category-field">
               비용 분류
-              <input id="category" list="categoryOptions" autocomplete="off" />
-              <datalist id="categoryOptions"></datalist>
+              <div class="category-combobox">
+                <input id="category" autocomplete="off" aria-haspopup="listbox" aria-expanded="false" />
+                <button id="categoryDropdownButton" class="category-dropdown-button" type="button" aria-label="비용 분류 목록 열기">▼</button>
+                <div id="categoryDropdown" class="category-dropdown" role="listbox" hidden></div>
+              </div>
             </label>
             <label>
               세부 분류
@@ -1015,9 +1081,7 @@
                 "</option>",
             )
             .join("");
-          $("categoryOptions").innerHTML = d.categories
-            .map((x) => '<option value="' + escapeHtml(x) + '"></option>')
-            .join("");
+          setupCategoryDropdown(d.categories || []);
           setupDashboardFilters();
           $("buyerName").value = "";
           $("employeeId").value = "";
@@ -1031,6 +1095,58 @@
       function syncEmp() {
         let e = app.employees?.find((x) => x.name == $("buyerName").value);
         $("employeeId").value = e ? e.employeeId : "";
+      }
+
+      function setupCategoryDropdown(categories) {
+        const input = $("category");
+        const dropdown = $("categoryDropdown");
+        const toggle = $("categoryDropdownButton");
+        const values = [...new Set((categories || []).map((x) => String(x || "").trim()).filter(Boolean))];
+
+        function renderOptions(filterText = "") {
+          const keyword = String(filterText || "").trim().toLowerCase();
+          const filtered = values.filter((value) => !keyword || value.toLowerCase().includes(keyword));
+          dropdown.innerHTML = "";
+          filtered.forEach((value) => {
+            const option = document.createElement("button");
+            option.type = "button";
+            option.className = "category-option";
+            option.setAttribute("role", "option");
+            option.textContent = value;
+            option.addEventListener("click", () => {
+              input.value = value;
+              input.dispatchEvent(new Event("change", { bubbles: true }));
+              closeDropdown();
+            });
+            dropdown.appendChild(option);
+          });
+        }
+
+        function openDropdown(showAll = false) {
+          renderOptions(showAll ? "" : input.value);
+          dropdown.hidden = false;
+          input.setAttribute("aria-expanded", "true");
+        }
+
+        function closeDropdown() {
+          dropdown.hidden = true;
+          input.setAttribute("aria-expanded", "false");
+        }
+
+        input.addEventListener("focus", () => openDropdown(true));
+        input.addEventListener("input", () => openDropdown(false));
+        toggle.addEventListener("click", () => {
+          if (dropdown.hidden) {
+            input.focus();
+            openDropdown(true);
+          } else {
+            closeDropdown();
+          }
+        });
+        document.addEventListener("pointerdown", (event) => {
+          if (!event.target.closest(".category-combobox")) closeDropdown();
+        });
+        renderOptions();
       }
 
       function collectReceiptPayload() {
